@@ -10,13 +10,15 @@
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    owner: "{{ item.owner }}"
-    group: "{{ item.group }}"
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
     mode: "{{ item.mode }}"
   loop:
     - { path: "{{ ai_root }}/src", owner: root, group: root, mode: "0750" }
-    - { path: "{{ ai_root }}/hf-cache", owner: root, group: root, mode: "0750" }
-    - { path: "{{ ai_root }}/vllm-cache", owner: root, group: root, mode: "0750" }
+    # Owner left alone: vLLM runs as root in its container, and the POC's
+    # caches belong to the maintenance account from the manual runbook.
+    - { path: "{{ ai_root }}/hf-cache", mode: "0750" }
+    - { path: "{{ ai_root }}/vllm-cache", mode: "0750" }
     - { path: "{{ ai_root }}/platform/data", owner: root, group: root, mode: "0750" }
     - { path: "{{ ai_root }}/platform/data/auth", owner: "65532", group: "65532", mode: "0700" }
     - { path: "{{ ai_root }}/platform/data/docs", owner: "65532", group: "65532", mode: "0750" }

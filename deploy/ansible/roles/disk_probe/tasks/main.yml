@@ -52,3 +52,5 @@
     enabled: true
     state: started
     daemon_reload: true
+  # --check does not write the unit above, so systemd cannot find it yet.
+  when: not ansible_check_mode

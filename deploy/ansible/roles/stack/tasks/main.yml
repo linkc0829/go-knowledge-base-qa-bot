@@ -49,6 +49,7 @@
         MODEL_ID={{ model_id }}
         MODEL_REVISION={{ model_revision }}
         SERVED_MODEL_NAME={{ served_model_name }}
+        VLLM_MAX_MODEL_LEN={{ vllm_max_model_len }}
         VLLM_API_KEY={{ vault_vllm_api_key }}
         HF_TOKEN={{ vault_hf_token }}
         HF_CACHE_DIR={{ ai_root }}/hf-cache

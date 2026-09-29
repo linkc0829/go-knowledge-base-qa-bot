@@ -1,0 +1,63 @@
+# vLLM, moved from the POC's /srv/ai/vllm/compose.yaml (Notion POC runbook §7)
+# with the same flags. Ansible runs it; by hand:
+#   cp .env.example .env && chmod 600 .env   # fill it
+#   docker compose up -d
+name: inference
+
+services:
+  vllm:
+    image: ${VLLM_IMAGE:?pin an exact vllm/vllm-openai tag}
+    runtime: nvidia
+    ipc: host
+    restart: unless-stopped
+    # Only what vLLM needs. The API key reaches it through the command line,
+    # never through the environment of other services.
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    command:
+      - --model
+      - ${MODEL_ID:?verified checkpoint}
+      - --revision
+      - ${MODEL_REVISION:?pinned commit SHA, never main}
+      - --served-model-name
+      - ${SERVED_MODEL_NAME:-gemma-4-26b-a4b}
+      - --dtype
+      - auto
+      - --max-model-len
+      - "${VLLM_MAX_MODEL_LEN:-8192}"
+      - --gpu-memory-utilization
+      - "${VLLM_GPU_MEM_UTIL:-0.90}"
+      - --max-num-seqs
+      - "${VLLM_MAX_NUM_SEQS:-4}"
+      - --enable-prefix-caching
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - gemma4
+      - --reasoning-parser
+      - gemma4
+      - --api-key
+      - ${VLLM_API_KEY:?shared with the gateway}
+    # The gateway reaches vllm:8000 over ai-net. The loopback port is kept for
+    # operators' curl on the host; vLLM is never exposed to the LAN.
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [ai-net]
+    volumes:
+      - ${HF_CACHE_DIR:-/srv/ai/hf-cache}:/root/.cache/huggingface
+      - ${VLLM_CACHE_DIR:-/srv/ai/vllm-cache}:/root/.cache/vllm
+    # /health is 200 once the engine is up. A cold start downloads and compiles
+    # (first run took 76 min to download), so the grace period is long; a warm
+    # restart is ~2 min. Docker does not restart on "unhealthy", only on exit.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 20m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+networks:
+  ai-net:
+    external: true

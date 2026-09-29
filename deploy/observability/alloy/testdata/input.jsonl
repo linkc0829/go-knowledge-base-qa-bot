@@ -1,0 +1,11 @@
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"gateway_usage","user_id":"p_3q2-7wAbCdEfGhIjKlMnOw","user_kind":"user","principal_id":"p_kbServiceTokenAbcdefA","workload":"rag","path":"/v1/chat/completions","model":"gemma-4-26b-a4b","status":200,"prompt_tokens":4321,"completion_tokens":8765,"latency_ms":900,"ttft_ms":120,"user_name":"LEAK-NAME-FIELD"}
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"gateway_usage","user_id":"p_AliceFromMarketing2026","user_kind":"unknown","workload":"rag","path":"/v1/chat/completions","status":200,"prompt_tokens":1,"completion_tokens":1,"latency_ms":1}
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"gateway_usage","user_id":"Alice Chen","user_kind":"unknown","workload":"rag","path":"/v1/embeddings","status":200,"prompt_tokens":0,"completion_tokens":0,"latency_ms":1,"input_count":2,"input_chars":30}
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"kb_query","q":"SECRET-Q1 \"引號\" \\ 反斜線\n第二行 請問薪資","owner_id":"p_3q2-7wAbCdEfGhIjKlMnOw","session":"s1","took":1.25,"grounded":true,"strategy":"hybrid","sources":["hr/salary.md"]}
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"kb_query","q":"SECRET-Q2","owner_id":"p_AliceFromMarketing2026","took":0.5,"grounded":false,"strategy":"refuse"}
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"llm_usage","model":"gemma-4-26b-a4b","prompt_tokens":777,"completion_tokens":333,"ttft":0.2,"duration":1.5}
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"host_disk","mount":"/srv","used_pct":42.5,"avail_gb":900}
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"http","path":"/v1/chat","q":"UNKNOWN-MARKER"}
+{"level":"info","msg":"kb_query","q":"MALFORMED-MARKER"
+plain text MALFORMED-TEXT-MARKER
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","msg":"kb_query","q":"HALF-LINE-MARKER

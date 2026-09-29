@@ -1,0 +1,454 @@
+{
+  "uid": "llm-platform",
+  "title": "LLM Platform",
+  "editable": false,
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "refresh": "5m",
+  "tags": [
+    "llm-platform"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "kind",
+        "label": "User kind",
+        "type": "custom",
+        "query": "user,test,service,unknown",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "user"
+          ],
+          "value": [
+            "user"
+          ]
+        },
+        "options": [
+          {
+            "text": "user",
+            "value": "user",
+            "selected": true
+          },
+          {
+            "text": "test",
+            "value": "test",
+            "selected": false
+          },
+          {
+            "text": "service",
+            "value": "service",
+            "selected": false
+          },
+          {
+            "text": "unknown",
+            "value": "unknown",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Weekly active users",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Distinct user_id with at least one request in the last 7 days. Kind filter defaults to user (people only). IDs are anonymous; names are mapped on the host with usagecost.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "count(sum by (user_id) (count_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" [7d])))",
+          "legendFormat": "",
+          "queryType": "instant"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Daily active users",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Distinct user_id per day.",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 18,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "count(sum by (user_id) (count_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" [1d])))",
+          "legendFormat": "users",
+          "queryType": "range"
+        }
+      ],
+      "interval": "1d"
+    },
+    {
+      "id": 3,
+      "title": "Chat requests per day by status",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "429 = shed by the gateway's concurrency limit; 499 = client went away; 504 = upstream header timeout.",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (status) (count_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" [1d]))",
+          "legendFormat": "{{status}}",
+          "queryType": "range"
+        }
+      ],
+      "interval": "1d",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Tokens per day",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(sum_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" | unwrap prompt_tokens [1d]))",
+          "legendFormat": "prompt",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(sum_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" | unwrap completion_tokens [1d]))",
+          "legendFormat": "completion",
+          "queryType": "range"
+        }
+      ],
+      "interval": "1d",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "TTFT and latency (p95)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "TTFT is streams only. Latency is the whole request, successful ones only.",
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" | ttft_ms > 0 | unwrap ttft_ms [$__auto]) by ()",
+          "legendFormat": "TTFT p95",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" | status=200 | unwrap latency_ms [$__auto]) by ()",
+          "legendFormat": "latency p95",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Error rate (5xx)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" | status >= 500 [$__auto])) / sum(count_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" [$__auto]))",
+          "legendFormat": "5xx",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "KB refusal rate",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Share of KB questions answered without grounding sources (refused or fell back).",
+      "gridPos": {
+        "x": 18,
+        "y": 13,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({service=\"kb\", msg=\"kb_query\"} | json | grounded=\"false\" [1d])) / sum(count_over_time({service=\"kb\", msg=\"kb_query\"} | json [1d]))",
+          "legendFormat": "not grounded",
+          "queryType": "range"
+        }
+      ],
+      "interval": "1d",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Disk used",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Written every 10 minutes by the disk_probe timer. Red line: 85%.",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "max by (mount) (max_over_time({service=\"host\", msg=\"host_disk\"} | json | unwrap used_pct [$__auto]) by (mount))",
+          "legendFormat": "{{mount}}",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "Usage by user_id (dashboard time range)",
+      "type": "table",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Anonymous IDs only. nonstandard_id collects IDs that do not look generated (they may have been names). To see who an ID is, an admin runs usagecost on the host.",
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user_id) (count_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" [$__range]))",
+          "legendFormat": "",
+          "queryType": "instant"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user_id) (sum_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" | unwrap prompt_tokens [$__range]))",
+          "legendFormat": "",
+          "queryType": "instant"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user_id) (sum_over_time({service=\"gateway\", msg=\"gateway_usage\"} | json | user_kind=~\"$kind\" | path=~\".*/completions\" | unwrap completion_tokens [$__range]))",
+          "legendFormat": "",
+          "queryType": "instant"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "requests",
+              "Value #B": "prompt tokens",
+              "Value #C": "completion tokens"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "requests",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

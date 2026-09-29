@@ -1,0 +1,23 @@
+// Production: host log files -> allowlist -> Loki.
+import.file "lib" {
+  filename = "/etc/alloy/lib/allowlist.alloy"
+}
+
+loki.source.file "platform" {
+  targets = [
+    {__path__ = "/logs/gateway.log", service = "gateway"},
+    {__path__ = "/logs/kb.log", service = "kb"},
+    {__path__ = "/logs/host.log", service = "host"},
+  ]
+  forward_to = [lib.allowlist.main.receiver]
+}
+
+lib.allowlist "main" {
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

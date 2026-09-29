@@ -93,6 +93,19 @@ jobs:
           docker run --rm --entrypoint /app/healthcheck llm-platform:ci http://127.0.0.1:1/
           test $? -eq 1
 
+  # Runs the pinned Alloy and Loki images from deploy/observability/compose.yaml:
+  # the log allowlist must drop question text and names, and every dashboard
+  # query must parse.
+  observability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python deploy/observability/alloy/test/run.py
+      - run: python deploy/observability/grafana/test/check_queries.py
+
   govulncheck:
     runs-on: ubuntu-latest
     steps:

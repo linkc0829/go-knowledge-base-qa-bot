@@ -1,0 +1,147 @@
+// The only path from host log files to Loki. Shared verbatim by production
+// (../config.alloy) and the CI test (../test/config.alloy).
+//
+// Allowlist, not blocklist: each known msg is rebuilt from the listed fields
+// only, and stage.output replaces the original line with the rebuilt one, so
+// q (the question text), names and any field added to the code later never
+// leave this component. Any other msg and any non-JSON line is dropped.
+declare "allowlist" {
+  argument "forward_to" {
+    comment = "Receivers for the rebuilt lines."
+  }
+
+  loki.process "p" {
+    forward_to = argument.forward_to.value
+
+    stage.label_drop {
+      values = ["filename"]
+    }
+
+    stage.json {
+      expressions    = {msg = "msg"}
+      drop_malformed = true
+    }
+
+    stage.labels {
+      values = {msg = ""}
+    }
+
+    stage.match {
+      selector            = "{msg!~\"gateway_usage|kb_query|llm_usage|host_disk\"}"
+      action              = "drop"
+      drop_counter_reason = "not_allowlisted"
+    }
+
+    // IDs must look exactly like GeneratePrincipalID output ("p_" + 16 random
+    // bytes as unpadded base64url: 22 chars, the last one A/Q/g/w). Anything
+    // else - a hand-edited auth.json ID, a free-form X-On-Behalf-Of - may be a
+    // name, so it is replaced. A guard against misuse, not proof of randomness.
+    stage.match {
+      selector = "{msg=\"gateway_usage\"}"
+
+      stage.json {
+        expressions = {
+          ts                = "ts",
+          user_id           = "user_id",
+          user_kind         = "user_kind",
+          workload          = "workload",
+          path              = "path",
+          model             = "model",
+          status            = "status",
+          prompt_tokens     = "prompt_tokens",
+          completion_tokens = "completion_tokens",
+          latency_ms        = "latency_ms",
+          ttft_ms           = "ttft_ms",
+          input_count       = "input_count",
+          input_chars       = "input_chars",
+          error             = "error",
+        }
+      }
+
+      stage.template {
+        source   = "user_id"
+        template = `{{ if regexMatch "^p_[A-Za-z0-9_-]{21}[AQgw]$" (toString .Value) }}{{ .Value }}{{ else }}nonstandard_id{{ end }}`
+      }
+
+      stage.template {
+        source   = "out"
+        template = `{{ dict "ts" .ts "user_id" .user_id "user_kind" .user_kind "workload" .workload "path" .path "model" .model "status" .status "prompt_tokens" .prompt_tokens "completion_tokens" .completion_tokens "latency_ms" .latency_ms "ttft_ms" .ttft_ms "input_count" .input_count "input_chars" .input_chars "error" .error | toJson }}`
+      }
+    }
+
+    stage.match {
+      selector = "{msg=\"kb_query\"}"
+
+      stage.json {
+        expressions = {
+          ts       = "ts",
+          owner_id = "owner_id",
+          took     = "took",
+          grounded = "grounded",
+          strategy = "strategy",
+        }
+      }
+
+      stage.template {
+        source   = "owner_id"
+        template = `{{ if regexMatch "^p_[A-Za-z0-9_-]{21}[AQgw]$" (toString .Value) }}{{ .Value }}{{ else }}nonstandard_id{{ end }}`
+      }
+
+      stage.template {
+        source   = "out"
+        template = `{{ dict "ts" .ts "owner_id" .owner_id "took" .took "grounded" .grounded "strategy" .strategy | toJson }}`
+      }
+    }
+
+    stage.match {
+      selector = "{msg=\"llm_usage\"}"
+
+      stage.json {
+        expressions = {
+          ts                = "ts",
+          model             = "model",
+          prompt_tokens     = "prompt_tokens",
+          completion_tokens = "completion_tokens",
+          ttft              = "ttft",
+          duration          = "duration",
+        }
+      }
+
+      stage.template {
+        source   = "out"
+        template = `{{ dict "ts" .ts "model" .model "prompt_tokens" .prompt_tokens "completion_tokens" .completion_tokens "ttft" .ttft "duration" .duration | toJson }}`
+      }
+    }
+
+    stage.match {
+      selector = "{msg=\"host_disk\"}"
+
+      stage.json {
+        expressions = {
+          ts       = "ts",
+          mount    = "mount",
+          used_pct = "used_pct",
+          avail_gb = "avail_gb",
+        }
+      }
+
+      stage.template {
+        source   = "out"
+        template = `{{ dict "ts" .ts "mount" .mount "used_pct" .used_pct "avail_gb" .avail_gb | toJson }}`
+      }
+    }
+
+    stage.timestamp {
+      source = "ts"
+      format = "2006-01-02T15:04:05.000Z0700"
+    }
+
+    stage.output {
+      source = "out"
+    }
+  }
+
+  export "receiver" {
+    value = loki.process.p.receiver
+  }
+}

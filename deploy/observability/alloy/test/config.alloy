@@ -1,0 +1,15 @@
+// CI: the same allowlist module, fed the fixture file, printed by loki.echo.
+import.file "lib" {
+  filename = "/etc/alloy/lib/allowlist.alloy"
+}
+
+loki.source.file "fixture" {
+  targets    = [{__path__ = "/testdata/input.jsonl", service = "fixture"}]
+  forward_to = [lib.allowlist.main.receiver]
+}
+
+lib.allowlist "main" {
+  forward_to = [loki.echo.out.receiver]
+}
+
+loki.echo "out" { }

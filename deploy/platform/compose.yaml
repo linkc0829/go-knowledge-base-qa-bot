@@ -1,0 +1,97 @@
+# gateway + kb, built from this repo on the machine (Dockerfile at the root).
+#   cp .env.example .env && chmod 600 .env   # fill it
+#   docker compose up -d --build
+#
+# Data lives under DATA_DIR on the host (layout and owners: deploy/README.md).
+# Both binaries run as distroless nonroot, UID/GID 65532.
+name: platform
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: 10m, max-file: "3"}
+
+services:
+  gateway:
+    build: ../..
+    image: llm-platform:local
+    command: ["/app/gateway"]
+    restart: unless-stopped
+    environment:
+      KB_AUTH_FILE: auth/auth.json
+      # File only: container stdout would duplicate it into Docker's logs.
+      GATEWAY_LOG_OUTPUT: log/gateway.log
+      LOG_LEVEL: info
+      LOG_ENCODING: json
+      GATEWAY_PORT: "12599"
+      GATEWAY_UPSTREAM_BASE_URL: http://vllm:8000
+      GATEWAY_UPSTREAM_API_KEY: ${VLLM_API_KEY:?same value as the inference .env}
+      GATEWAY_EMBED_UPSTREAM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
+      GATEWAY_EMBED_UPSTREAM_API_KEY: ${GEMINI_API_KEY:?embeddings upstream key}
+      GATEWAY_EMBED_MODEL: ${KB_EMBED_MODEL:-gemini-embedding-2}
+      GATEWAY_MAX_INFLIGHT: ${GATEWAY_MAX_INFLIGHT:-64}
+      GATEWAY_MAX_INFLIGHT_PER_USER: ${GATEWAY_MAX_INFLIGHT_PER_USER:-4}
+    volumes:
+      # A directory, not the file: kb replaces auth.json by rename, which
+      # fails on a single-file bind mount; the gateway re-reads it on change.
+      - ${DATA_DIR:-/srv/ai/platform/data}/auth:/app/auth:ro
+      - ${DATA_DIR:-/srv/ai/platform/data}/log:/app/log
+    # Plain HTTP on the LAN (decided; TLS/VPN is Phase 6). UFW limits sources.
+    ports:
+      - "12599:12599"
+    networks: [ai-net]
+    # Liveness only. /readyz depends on vLLM, and an unready upstream must not
+    # mark the gateway unhealthy; operators check /readyz for the whole chain.
+    healthcheck:
+      test: ["CMD", "/app/healthcheck", "http://127.0.0.1:12599/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 256m
+    logging: *logging
+
+  kb:
+    image: llm-platform:local
+    command: ["/app/kb"]
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      KB_AUTH_FILE: auth/auth.json
+      # File only: kb_query lines carry the question text (q), which must not
+      # reach Docker's logs or Loki. Alloy reads this file with an allowlist.
+      LOG_OUTPUT: log/kb.log
+      LOG_LEVEL: info
+      LOG_ENCODING: json
+      APP_PORT: "12598"
+      OPENAI_BASE_URL: http://gateway:12599/v1
+      # Trusted gateway token: kbtoken create -trusted -workload rag
+      OPENAI_API_KEY: ${KB_GATEWAY_TOKEN:?trusted gateway token for the KB}
+      KB_CHAT_MODEL: ${SERVED_MODEL_NAME:-gemma-4-26b-a4b}
+      KB_EMBED_MODEL: ${KB_EMBED_MODEL:-gemini-embedding-2}
+      # Sends X-On-Behalf-Of so gateway_usage is per asking user, not all "kb".
+      KB_LLM_FORWARD_USER: "true"
+      KB_DOCS_DIR: docs
+      KB_INDEX_DIR: .kb
+    volumes:
+      - ${DATA_DIR:-/srv/ai/platform/data}/auth:/app/auth
+      - ${DATA_DIR:-/srv/ai/platform/data}/docs:/app/docs:ro
+      - ${DATA_DIR:-/srv/ai/platform/data}/.kb:/app/.kb
+      - ${DATA_DIR:-/srv/ai/platform/data}/log:/app/log
+    ports:
+      - "12598:12598"
+    networks: [ai-net]
+    # /ready is 503 until the index is loaded or when retrieval fell back to BM25.
+    healthcheck:
+      test: ["CMD", "/app/healthcheck", "http://127.0.0.1:12598/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    mem_limit: 1g
+    logging: *logging
+
+networks:
+  ai-net:
+    external: true

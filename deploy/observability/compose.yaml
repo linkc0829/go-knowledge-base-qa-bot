@@ -1,0 +1,84 @@
+# Loki + Alloy + Grafana. Alloy tails the platform's log files through an
+# allowlist (alloy/lib/allowlist.alloy); Grafana is the only LAN-facing port.
+#   cp .env.example .env && chmod 600 .env   # fill it
+#   docker compose up -d
+name: observability
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: 10m, max-file: "3"}
+
+services:
+  loki:
+    image: grafana/loki:3.7.8
+    command: ["-config.file=/etc/loki/config.yaml"]
+    restart: unless-stopped
+    volumes:
+      - ./loki/config.yaml:/etc/loki/config.yaml:ro
+      - ${DATA_DIR:-/srv/ai/observability/data}/loki:/loki
+    networks: [ai-net]
+    # No healthcheck: the image is distroless (no shell, curl or wget).
+    # Check by hand: docker compose exec grafana curl -fsS http://loki:3100/ready
+    mem_limit: 1g
+    logging: *logging
+
+  alloy:
+    image: grafana/alloy:v1.19.2
+    command: ["run", "/etc/alloy/config.alloy", "--storage.path=/var/lib/alloy/data"]
+    restart: unless-stopped
+    depends_on: [loki]
+    # The image's non-root alloy user; reads the logs through the ailogs group.
+    user: "473:473"
+    group_add: ["${AILOGS_GID:?GID of the ailogs group on the host}"]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./alloy/lib:/etc/alloy/lib:ro
+      - ${PLATFORM_LOG_DIR:-/srv/ai/platform/data/log}:/logs:ro
+      # Read positions, so a restart does not resend or skip lines.
+      - ${DATA_DIR:-/srv/ai/observability/data}/alloy:/var/lib/alloy/data
+    networks: [ai-net]
+    # No curl/wget in the image; bash's /dev/tcp asks /-/ready directly.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/12345 && printf 'GET /-/ready HTTP/1.0\r\n\r\n' >&3 && grep -q ' 200 ' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 256m
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    restart: unless-stopped
+    depends_on: [loki]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set a long random password}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_USERS_DEFAULT_ROLE: Viewer
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ${DATA_DIR:-/srv/ai/observability/data}/grafana:/var/lib/grafana
+    # Plain HTTP on the LAN (decided; TLS/VPN is Phase 6): the login password
+    # travels in cleartext. UFW limits sources.
+    ports:
+      - "3000:3000"
+    networks: [ai-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 512m
+    logging: *logging
+
+networks:
+  ai-net:
+    external: true

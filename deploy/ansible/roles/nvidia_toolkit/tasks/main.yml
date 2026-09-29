@@ -1,6 +1,13 @@
 ---
 # NVIDIA Container Toolkit (POC runbook §5). The runtime entry in daemon.json
 # is written by the docker role, so `nvidia-ctk runtime configure` is not run.
+# The POC runbook (§5) added the same repository as a .list file with a
+# different Signed-By; apt refuses to update with both present.
+- name: Remove the runbook's legacy repository file
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    state: absent
+
 - name: Add the NVIDIA Container Toolkit repository
   ansible.builtin.deb822_repository:
     name: nvidia-container-toolkit

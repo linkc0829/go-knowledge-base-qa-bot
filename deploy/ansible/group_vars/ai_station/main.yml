@@ -8,6 +8,9 @@ vllm_image: vllm/vllm-openai:v0.28.0
 model_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
 model_revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
 served_model_name: gemma-4-26b-a4b
+# Measured on the POC (2026-09-29): 96k fits with 513k tokens of KV cache,
+# 5.2 concurrent full-length requests at gpu_memory_utilization 0.90.
+vllm_max_model_len: 98304
 kb_embed_model: gemini-embedding-2
 
 # Pinned source for the platform image (built on the machine).

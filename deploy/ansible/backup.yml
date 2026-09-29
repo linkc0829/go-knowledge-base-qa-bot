@@ -14,11 +14,16 @@
   vars:
     mode: routine
     backup_remote_dir: /var/backups/ai-station
-    backup_name: "ai-station-{{ lookup('ansible.builtin.pipe', 'date -u +%Y%m%dT%H%M%SZ') }}.tar.gz"
   tasks:
     - name: Check -e mode
       ansible.builtin.assert:
         that: mode in ['routine', 'migrate']
+
+    # Fixed once with set_fact: a play var would re-run the lookup on every
+    # use, so the tar, stat, fetch and delete steps would see different names.
+    - name: Name the backup
+      ansible.builtin.set_fact:
+        backup_name: "ai-station-{{ lookup('ansible.builtin.pipe', 'date -u +%Y%m%dT%H%M%SZ') }}.tar.gz"
 
     - name: Back up with writers stopped
       block:

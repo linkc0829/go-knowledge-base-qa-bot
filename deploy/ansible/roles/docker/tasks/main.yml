@@ -22,8 +22,10 @@
     state: present
     update_cache: true
 
-# One file owns daemon.json: default log rotation for every container, and
-# the nvidia runtime that `nvidia-ctk runtime configure` would otherwise add.
+# One file owns daemon.json: default log rotation for every container, the
+# nvidia runtime that `nvidia-ctk runtime configure` would otherwise add, and
+# live-restore so a daemon restart (this handler, a Docker upgrade) does not
+# restart vLLM. The first run that adds live-restore still restarts them once.
 - name: Configure the Docker daemon
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json
@@ -31,6 +33,7 @@
     mode: "0644"
   vars:
     docker_daemon:
+      live-restore: true
       log-driver: json-file
       log-opts: {max-size: 10m, max-file: "3"}
       runtimes:

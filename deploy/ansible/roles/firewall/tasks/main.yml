@@ -2,6 +2,8 @@
 # UFW limits who reaches the host. Docker-published ports bypass UFW's INPUT
 # rules (Docker's NAT runs first), so the same source allowlist is also
 # written into Docker's DOCKER-USER chain via /etc/ufw/after.rules.
+# ponytail: DOCKER-USER rules match the default-route interface only; a second
+# LAN-facing NIC would bypass them. Make the interface a list if one is added.
 - name: Require the allowed networks
   ansible.builtin.assert:
     that:

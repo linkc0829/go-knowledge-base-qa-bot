@@ -32,9 +32,9 @@ ansible-playbook site.yml --ask-vault-pass --tags stack -e only=platform   # app
 | --- | --- |
 | `host_time` | UTC; internal NTP once `ntp_server` is set (public NTP is blocked) |
 | `nvidia_driver` | driver + headers; reboots only with `-e allow_reboot=true`, otherwise stops and asks for a reboot |
-| `docker`, `nvidia_toolkit` | Docker's apt repo, the NVIDIA toolkit; `daemon.json` with log rotation and the nvidia runtime |
+| `docker`, `nvidia_toolkit` | Docker's apt repo, the NVIDIA toolkit; `daemon.json` with log rotation, the nvidia runtime and `live-restore`, so a Docker daemon restart does not restart vLLM. The first run that turns `live-restore` on still restarts the containers once |
 | `ai_dirs` | the directories below, the `ailogs` group, pre-created 0640 log files |
-| `firewall` | UFW: SSH from `ssh_subnets` first, then 12599/12598/3000 from `client_subnets`. **Docker-published ports skip UFW**, so the same allowlist also goes into Docker's `DOCKER-USER` chain |
+| `firewall` | UFW: SSH from `ssh_subnets` first, then 12599/12598/3000 from `client_subnets`. **Docker-published ports skip UFW**, so the same allowlist also goes into Docker's `DOCKER-USER` chain, for the default-route interface only (a second LAN-facing NIC would need adding) |
 | `disk_probe` | systemd timer, every 10 min, `host_disk` lines into `host.log` |
 | `stack` | pinned checkout of this repo, one 0600 `.env` per project, `ai-net`, `compose up` in order |
 

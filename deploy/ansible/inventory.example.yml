@@ -1,0 +1,8 @@
+# cp inventory.example.yml inventory.yml   (inventory.yml is gitignored)
+all:
+  children:
+    ai_station:
+      hosts:
+        poc:
+          ansible_host: 192.168.22.101
+          ansible_user: ops   # the non-root maintenance account with sudo

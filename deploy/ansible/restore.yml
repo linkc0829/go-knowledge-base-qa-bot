@@ -1,0 +1,68 @@
+---
+# Restore a backup.yml tar. Never starts anything: run
+# `site.yml --tags stack` afterwards, as a separate, deliberate step.
+#   ansible-playbook restore.yml -e backup_file=backups/ai-station-<ts>.tar.gz
+#   (add -e confirm_overwrite=true if the host already has data)
+- name: Restore the AI Station data
+  hosts: ai_station
+  vars:
+    backup_remote_dir: /var/backups/ai-station
+    confirm_overwrite: false
+  tasks:
+    - name: Require -e backup_file
+      ansible.builtin.assert:
+        that: backup_file is defined
+        fail_msg: Pass -e backup_file=<path to a backup.yml tar on the control node>.
+
+    - name: Look for existing data
+      ansible.builtin.stat:
+        path: "{{ ai_root }}/platform/data/auth/auth.json"
+      register: restore_existing
+
+    - name: Refuse to overwrite existing data unless confirmed
+      ansible.builtin.fail:
+        msg: >-
+          This host already has {{ ai_root }}/platform/data/auth/auth.json.
+          Rerun with -e confirm_overwrite=true to replace it with the backup.
+      when: restore_existing.stat.exists and not confirm_overwrite | bool
+
+    - name: Stop platform and observability
+      ansible.builtin.command: "docker compose -p {{ item }} stop"
+      loop: [platform, observability]
+      changed_when: true
+
+    - name: Create the remote backup directory
+      ansible.builtin.file:
+        path: "{{ backup_remote_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Copy the tar to the host (0600)
+      ansible.builtin.copy:
+        src: "{{ backup_file }}"
+        dest: "{{ backup_remote_dir }}/{{ backup_file | basename }}"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Extract, keeping numeric owners
+      ansible.builtin.unarchive:
+        src: "{{ backup_remote_dir }}/{{ backup_file | basename }}"
+        dest: "{{ ai_root }}"
+        remote_src: true
+        extra_opts: [--numeric-owner]
+
+    - name: Reapply directory owners and modes
+      ansible.builtin.include_role:
+        name: ai_dirs
+
+    - name: Delete the tar from the host
+      ansible.builtin.file:
+        path: "{{ backup_remote_dir }}/{{ backup_file | basename }}"
+        state: absent
+
+    - name: Next step
+      ansible.builtin.debug:
+        msg: Restored; nothing was started. Run `ansible-playbook site.yml --tags stack`.

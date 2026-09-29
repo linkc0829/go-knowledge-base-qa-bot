@@ -1,0 +1,4 @@
+# Per-site and secret files: never committed.
+inventory.yml
+vault.yml
+backups/

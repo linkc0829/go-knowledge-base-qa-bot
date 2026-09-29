@@ -1,0 +1,33 @@
+---
+# CI only: runs the real firewall role against the (disposable) GitHub runner,
+# which has Docker, so ufw must load the DOCKER-USER section of after.rules and
+# the role's own check must see a DROP rule for every exposed port.
+#   sudo ansible-playbook -i localhost, -c local tests/firewall.yml
+- name: Firewall role on a Docker host
+  hosts: all
+  become: true
+  vars:
+    ssh_subnets: [0.0.0.0/0]         # keep the runner reachable
+    client_subnets: [10.99.0.0/16]
+    exposed_ports: [12599, 12598, 3000]
+  roles:
+    - firewall
+  post_tasks:
+    - name: Show the live chain
+      ansible.builtin.command: iptables -S DOCKER-USER
+      register: firewall_test_chain
+      changed_when: false
+
+    - name: Allowed subnet returns before the drop
+      ansible.builtin.assert:
+        that: "'-s 10.99.0.0/16' in firewall_test_chain.stdout"
+
+    - name: Print it
+      ansible.builtin.debug:
+        var: firewall_test_chain.stdout_lines
+
+    - name: A second run changes nothing in after.rules (no duplicate block)
+      ansible.builtin.command: grep -c "BEGIN ai-station DOCKER-USER" /etc/ufw/after.rules
+      register: firewall_test_markers
+      changed_when: false
+      failed_when: firewall_test_markers.stdout != "1"

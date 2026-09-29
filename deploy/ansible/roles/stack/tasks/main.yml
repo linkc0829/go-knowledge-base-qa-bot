@@ -1,0 +1,103 @@
+---
+- name: Check -e only
+  ansible.builtin.assert:
+    that: only == 'all' or only in stack_projects
+    fail_msg: "only must be all or one of {{ stack_projects | join(', ') }}"
+
+# The POC's hand-made project also binds 127.0.0.1:8000. It is not stopped
+# automatically: the operator decides when vLLM goes down.
+- name: Look for the POC's old vllm project
+  ansible.builtin.command: docker ps -q --filter label=com.docker.compose.project=vllm
+  register: stack_old_vllm
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Stop if the old project is still running
+  ansible.builtin.fail:
+    msg: >-
+      The POC's old compose project (/srv/ai/vllm) is still running and holds
+      port 8000. Run `cd /srv/ai/vllm && docker compose down` when vLLM may go
+      down, then rerun.
+  when: stack_old_vllm.stdout | length > 0
+
+- name: Install git
+  ansible.builtin.apt:
+    name: git
+    state: present
+
+- name: Check out the pinned source
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dir }}"
+    version: "{{ repo_ref }}"
+    force: true   # local edits on the host are not a source of truth
+
+# Each project gets only its own secrets. no_log and diff: false keep the
+# decrypted values out of the output, including under --check --diff.
+- name: Write the project .env files
+  ansible.builtin.copy:
+    dest: "{{ repo_dir }}/deploy/{{ item.project }}/.env"
+    content: "{{ item.content }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - project: inference
+      content: |
+        VLLM_IMAGE={{ vllm_image }}
+        MODEL_ID={{ model_id }}
+        MODEL_REVISION={{ model_revision }}
+        SERVED_MODEL_NAME={{ served_model_name }}
+        VLLM_API_KEY={{ vault_vllm_api_key }}
+        HF_TOKEN={{ vault_hf_token }}
+        HF_CACHE_DIR={{ ai_root }}/hf-cache
+        VLLM_CACHE_DIR={{ ai_root }}/vllm-cache
+    - project: platform
+      content: |
+        DATA_DIR={{ ai_root }}/platform/data
+        VLLM_API_KEY={{ vault_vllm_api_key }}
+        GEMINI_API_KEY={{ vault_gemini_api_key }}
+        KB_GATEWAY_TOKEN={{ vault_kb_gateway_token }}
+        SERVED_MODEL_NAME={{ served_model_name }}
+        KB_EMBED_MODEL={{ kb_embed_model }}
+    - project: observability
+      content: |
+        DATA_DIR={{ ai_root }}/observability/data
+        PLATFORM_LOG_DIR={{ ai_root }}/platform/data/log
+        AILOGS_GID={{ ailogs_gid }}
+        GRAFANA_ADMIN_PASSWORD={{ vault_grafana_admin_password }}
+  loop_control:
+    label: "{{ item.project }}"
+  no_log: true
+  diff: false
+
+- name: Create the shared network
+  ansible.builtin.command: docker network create ai-net
+  register: stack_net
+  changed_when: stack_net.rc == 0
+  failed_when: stack_net.rc != 0 and 'already exists' not in stack_net.stderr
+
+# gateway and kb refuse to start without tokens; restore.yml brings the file
+# over on a migration, and a brand-new host bootstraps it once by hand.
+- name: Look for auth.json
+  ansible.builtin.stat:
+    path: "{{ ai_root }}/platform/data/auth/auth.json"
+  register: stack_auth
+
+- name: Stop if the platform has no auth.json yet
+  ansible.builtin.fail:
+    msg: >-
+      {{ ai_root }}/platform/data/auth/auth.json is missing. Restore it
+      (restore.yml) or bootstrap it: see "First deploy" in deploy/README.md.
+  when: not stack_auth.stat.exists and (only in ['all', 'platform'])
+
+# In order, one at a time: depends_on cannot cross projects, and the gateway
+# does not wait for vLLM (its /readyz reports 503 until vLLM is up).
+- name: Start the compose projects
+  ansible.builtin.command: docker compose up -d --build --remove-orphans
+  args:
+    chdir: "{{ repo_dir }}/deploy/{{ item }}"
+  loop: "{{ stack_projects if only == 'all' else [only] }}"
+  register: stack_up
+  changed_when: stack_up.stderr is search('Recreated|Created|Started|Built')

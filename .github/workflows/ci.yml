@@ -106,6 +106,33 @@ jobs:
       - run: python deploy/observability/alloy/test/run.py
       - run: python deploy/observability/grafana/test/check_queries.py
 
+  # Host setup and deployment playbooks: syntax and lint only. A real run
+  # needs the AI Station (deploy/README.md acceptance checklist).
+  ansible:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/ansible
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ansible-core ansible-lint
+      - run: |
+          for p in site.yml backup.yml restore.yml; do
+            ansible-playbook -i inventory.example.yml --syntax-check \
+              -e vault_file=vault.example.yml -e backup_file=x "$p"
+          done
+      - run: ansible-lint --offline
+      # The runner is disposable and has Docker: apply the real firewall role
+      # twice (idempotence) and let its DOCKER-USER check run.
+      - name: firewall role against the runner
+        run: |
+          for i in 1 2; do
+            sudo "$(command -v ansible-playbook)" -i localhost, -c local tests/firewall.yml
+          done
+
   govulncheck:
     runs-on: ubuntu-latest
     steps:

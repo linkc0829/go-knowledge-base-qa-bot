@@ -1,0 +1,130 @@
+---
+# Consistent backup of the platform and observability data.
+#   ansible-playbook backup.yml                    # routine: stop, tar, start again
+#   ansible-playbook backup.yml -e mode=migrate    # stop, tar, leave stopped
+#
+# Writers are stopped first (gateway/kb logs, .kb and auth.json; Loki and
+# Grafana's SQLite; the disk probe timer), so the tar is consistent. vLLM
+# keeps running. Expect a few minutes of downtime: run it off-hours.
+#
+# The tar holds auth.json (token hashes) and kb.log (question text): it is
+# 0600 on both ends, and only the host's maintainers may read it.
+- name: Back up the AI Station data
+  hosts: ai_station
+  vars:
+    mode: routine
+    backup_remote_dir: /var/backups/ai-station
+    backup_name: "ai-station-{{ lookup('ansible.builtin.pipe', 'date -u +%Y%m%dT%H%M%SZ') }}.tar.gz"
+  tasks:
+    - name: Check -e mode
+      ansible.builtin.assert:
+        that: mode in ['routine', 'migrate']
+
+    - name: Back up with writers stopped
+      block:
+        - name: Stop the writers
+          ansible.builtin.command: "docker compose -p {{ item }} stop"
+          loop: [platform, observability]
+          changed_when: true
+
+        - name: Stop the disk probe timer
+          ansible.builtin.systemd_service:
+            name: ai-disk-probe.timer
+            state: stopped
+
+        - name: Create the remote backup directory
+          ansible.builtin.file:
+            path: "{{ backup_remote_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
+        - name: Write the tar (0600)
+          ansible.builtin.shell: >-
+            umask 077 &&
+            tar --numeric-owner -czf {{ backup_remote_dir }}/{{ backup_name }}
+            -C {{ ai_root }} platform/data observability/data
+          changed_when: true
+
+      always:
+        - name: Start the writers again (routine only)
+          ansible.builtin.command: "docker compose -p {{ item }} start"
+          loop: [platform, observability]
+          changed_when: true
+          when: mode == 'routine'
+
+        - name: Start the disk probe timer again (routine only)
+          ansible.builtin.systemd_service:
+            name: ai-disk-probe.timer
+            state: started
+          when: mode == 'routine'
+
+    - name: Checksum the remote tar
+      ansible.builtin.stat:
+        path: "{{ backup_remote_dir }}/{{ backup_name }}"
+        checksum_algorithm: sha256
+      register: backup_remote
+
+    - name: Create the local backup directory (0700)
+      ansible.builtin.file:
+        path: "{{ backup_local_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    - name: Pull the tar back to the control node
+      ansible.builtin.fetch:
+        src: "{{ backup_remote_dir }}/{{ backup_name }}"
+        dest: "{{ backup_local_dir }}/"
+        flat: true
+
+    - name: Make the local copy 0600
+      ansible.builtin.file:
+        path: "{{ backup_local_dir }}/{{ backup_name }}"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+
+    - name: Checksum the local copy
+      ansible.builtin.stat:
+        path: "{{ backup_local_dir }}/{{ backup_name }}"
+        checksum_algorithm: sha256
+      register: backup_local
+      delegate_to: localhost
+      become: false
+
+    - name: Compare checksums
+      ansible.builtin.assert:
+        that: backup_local.stat.checksum == backup_remote.stat.checksum
+        fail_msg: The local copy does not match; the remote tar is kept.
+
+    - name: Delete the remote tar once the local copy is verified
+      ansible.builtin.file:
+        path: "{{ backup_remote_dir }}/{{ backup_name }}"
+        state: absent
+
+    - name: List local backups
+      ansible.builtin.find:
+        paths: "{{ backup_local_dir }}"
+        patterns: "ai-station-*.tar.gz"
+      register: backup_all
+      delegate_to: localhost
+      become: false
+
+    - name: Keep the newest {{ backup_keep }}
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ (backup_all.files | sort(attribute='mtime', reverse=true))[backup_keep | int :] }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      delegate_to: localhost
+      become: false
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: >-
+          {{ backup_local_dir }}/{{ backup_name }} (sha256 {{ backup_local.stat.checksum }}).
+          {{ 'Services were restarted.' if mode == 'routine' else 'Platform and observability are left STOPPED for migration.' }}

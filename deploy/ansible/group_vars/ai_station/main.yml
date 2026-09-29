@@ -1,0 +1,43 @@
+---
+# Non-secret settings. Secrets live in vault.yml (see vault.example.yml).
+ai_root: /srv/ai
+
+# The POC's verified vLLM + checkpoint combination (Notion POC page, Phase 2).
+# Change them together.
+vllm_image: vllm/vllm-openai:v0.28.0
+model_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
+model_revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
+served_model_name: gemma-4-26b-a4b
+kb_embed_model: gemini-embedding-2
+
+# Pinned source for the platform image (built on the machine).
+repo_url: https://github.com/linkc0829/llm-platform.git
+repo_ref: main   # set to a tag or commit SHA for a reproducible deploy
+repo_dir: "{{ ai_root }}/src/llm-platform"
+
+# Group that lets Alloy read the platform's log files. Fixed so the GID in
+# the observability .env never drifts from the host.
+ailogs_gid: 2500
+
+# Clients allowed to reach gateway 12599, kb 12598 and Grafana 3000.
+# Plain HTTP (decided until Phase 6), so keep this as narrow as practical.
+client_subnets: []            # e.g. ["192.168.17.0/24"]
+# Sources allowed to SSH. Checked before UFW is enabled, so the play cannot
+# lock the operator out.
+ssh_subnets: []               # e.g. ["192.168.17.0/24"]
+exposed_ports: [12599, 12598, 3000]
+
+# Leave empty until IT provides an internal NTP server (public NTP is blocked).
+ntp_server: ""
+
+nvidia_driver_package: nvidia-driver-595-open
+# The driver install reboots only when this is true (-e allow_reboot=true).
+allow_reboot: false
+
+# Which compose projects `--tags stack` deploys: all, or one of them
+# (-e only=platform redeploys the app without touching vLLM).
+only: all
+
+# Backups: pulled back to this directory on the control node, 0600, newest N kept.
+backup_local_dir: "{{ playbook_dir }}/backups"
+backup_keep: 7

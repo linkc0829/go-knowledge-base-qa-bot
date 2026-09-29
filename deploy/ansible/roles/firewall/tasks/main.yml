@@ -1,0 +1,80 @@
+---
+# UFW limits who reaches the host. Docker-published ports bypass UFW's INPUT
+# rules (Docker's NAT runs first), so the same source allowlist is also
+# written into Docker's DOCKER-USER chain via /etc/ufw/after.rules.
+- name: Require the allowed networks
+  ansible.builtin.assert:
+    that:
+      - ssh_subnets | length > 0
+      - client_subnets | length > 0
+    fail_msg: Set ssh_subnets and client_subnets in group_vars before enabling the firewall.
+
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+# SSH first, so enabling UFW cannot lock the operator out.
+- name: Allow SSH from the maintenance networks
+  ansible.builtin.command: "ufw allow from {{ item }} to any port 22 proto tcp"
+  loop: "{{ ssh_subnets }}"
+  register: firewall_ssh
+  changed_when: "'Skipping' not in firewall_ssh.stdout"
+
+- name: Allow the exposed ports from client networks
+  ansible.builtin.command: "ufw allow from {{ item.0 }} to any port {{ item.1 }} proto tcp"
+  loop: "{{ client_subnets | product(exposed_ports) | list }}"
+  register: firewall_ports
+  changed_when: "'Skipping' not in firewall_ports.stdout"
+
+- name: Restrict Docker-published ports to client networks
+  ansible.builtin.blockinfile:
+    path: /etc/ufw/after.rules
+    marker: "# {mark} ai-station DOCKER-USER"
+    block: |
+      *filter
+      :DOCKER-USER - [0:0]
+      -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+      {% for port in exposed_ports %}
+      {% for net in client_subnets %}
+      -A DOCKER-USER -i {{ ansible_facts['default_ipv4']['interface'] }} -s {{ net }} -p tcp -m conntrack --ctorigdstport {{ port }} --ctdir ORIGINAL -j RETURN
+      {% endfor %}
+      -A DOCKER-USER -i {{ ansible_facts['default_ipv4']['interface'] }} -p tcp -m conntrack --ctorigdstport {{ port }} --ctdir ORIGINAL -j DROP
+      {% endfor %}
+      COMMIT
+  notify: Reload ufw
+
+- name: Read UFW status
+  ansible.builtin.command: ufw status
+  register: firewall_status
+  changed_when: false
+  check_mode: false
+  # In --check on a fresh host UFW is not installed yet; nothing to read.
+  failed_when: false
+
+- name: Enable UFW
+  ansible.builtin.command: ufw --force enable
+  when: "'Status: active' not in firewall_status.stdout"
+  changed_when: true
+
+- name: Apply the rules now
+  ansible.builtin.meta: flush_handlers
+
+# The block above is a second *filter section in after.rules (the pattern
+# ufw-docker documents). Check the live chain instead of trusting that
+# ufw loaded it: a missing DROP would leave the ports open to the whole LAN.
+- name: Read the live DOCKER-USER chain
+  ansible.builtin.command: iptables -S DOCKER-USER
+  register: firewall_docker_user
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Check every exposed port is restricted
+  ansible.builtin.assert:
+    that: "('--ctorigdstport ' ~ item ~ ' --ctdir ORIGINAL -j DROP') in firewall_docker_user.stdout"
+    fail_msg: >-
+      DOCKER-USER has no DROP rule for port {{ item }}: Docker-published ports
+      are open to every source. Check /etc/ufw/after.rules and `ufw reload`.
+    quiet: true
+  loop: "{{ exposed_ports }}"
+  when: not ansible_check_mode

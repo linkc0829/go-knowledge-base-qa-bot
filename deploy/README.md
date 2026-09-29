@@ -10,21 +10,80 @@ Everything runs on the POC host: Ubuntu 24.04, RTX 6000 Ada 48GB, `192.168.22.10
 
 Each project can be restarted without touching the others. For example, a gateway redeploy leaves vLLM running and avoids its ~2-minute warm restart.
 
-Ansible (`deploy/ansible/`, next PR) sets up the host and runs these steps. By hand:
+The projects start in that order. `depends_on` only works inside one project, so nothing waits across projects. The gateway starts even if vLLM is down, and `/readyz` returns 503 until vLLM is up.
+
+## Ansible
+
+[`ansible/`](ansible/) sets up the host and deploys. It uses built-in modules only, so the control node needs just `ansible-core`.
 
 ```bash
-docker network create ai-net
-for p in inference platform observability; do
-  (cd deploy/$p && cp .env.example .env && chmod 600 .env)   # then fill each .env
-done
-(cd deploy/inference && docker compose up -d)
-(cd deploy/platform && docker compose up -d --build)
-(cd deploy/observability && docker compose up -d)
+cd deploy/ansible
+cp inventory.example.yml inventory.yml               # host and SSH user
+cp vault.example.yml vault.yml && ansible-vault encrypt vault.yml
+# set client_subnets and ssh_subnets in group_vars/ai_station/main.yml
+
+ansible-playbook site.yml --ask-vault-pass --check --diff   # review first
+ansible-playbook site.yml --ask-vault-pass                  # host + stack
+ansible-playbook site.yml --ask-vault-pass --tags host      # host only, deploys nothing
+ansible-playbook site.yml --ask-vault-pass --tags stack -e only=platform   # app only, vLLM untouched
 ```
 
-Start them in that order. `depends_on` only works inside one project, so nothing waits across projects. The gateway starts even if vLLM is down, and `/readyz` returns 503 until vLLM is up.
+| Role | Does |
+| --- | --- |
+| `host_time` | UTC; internal NTP once `ntp_server` is set (public NTP is blocked) |
+| `nvidia_driver` | driver + headers; reboots only with `-e allow_reboot=true`, otherwise stops and asks for a reboot |
+| `docker`, `nvidia_toolkit` | Docker's apt repo, the NVIDIA toolkit; `daemon.json` with log rotation and the nvidia runtime |
+| `ai_dirs` | the directories below, the `ailogs` group, pre-created 0640 log files |
+| `firewall` | UFW: SSH from `ssh_subnets` first, then 12599/12598/3000 from `client_subnets`. **Docker-published ports skip UFW**, so the same allowlist also goes into Docker's `DOCKER-USER` chain |
+| `disk_probe` | systemd timer, every 10 min, `host_disk` lines into `host.log` |
+| `stack` | pinned checkout of this repo, one 0600 `.env` per project, `ai-net`, `compose up` in order |
 
-The POC's old `/srv/ai/vllm` project must be stopped first (`docker compose down` there), because both bind port 8000.
+- **Secrets** live only in `vault.yml` (ansible-vault) and in the 0600 `.env` files it writes. The tasks that write them set `no_log` and `diff: false`, so `--check --diff` does not print them. Keep the vault password in the maintainers' password manager.
+- **The old project.** If the POC's hand-made `/srv/ai/vllm` project is still running, the play stops and asks you to run `docker compose down` there yourself. It never stops vLLM on its own.
+- **Limits of `--check`.**
+  - On a new host it cannot show what depends on a package that isn't installed yet, and it doesn't build or start containers.
+  - It shows host-level differences only. The real test is the acceptance checklist after an actual run.
+
+### First deploy on a new host
+
+gateway and kb need `auth/auth.json`. On a migration, `restore.yml` brings it over. On a brand-new host, `stack` stops and asks for it. Bootstrap it once:
+
+```bash
+cd /srv/ai/src/llm-platform/deploy/platform
+sudo docker compose build
+# KB_GATEWAY_TOKEN does not exist yet; any value gets past the compose check.
+sudo KB_GATEWAY_TOKEN=unused docker compose run --rm --no-deps kb /app/kbtoken create-admin -name ops
+sudo KB_GATEWAY_TOKEN=unused docker compose run --rm --no-deps kb /app/kbtoken create -name kb -trusted -workload rag
+```
+
+Put the second token in `vault.yml` as `vault_kb_gateway_token`, then rerun `--tags stack`. Both tokens are shown only once.
+
+### Backup, restore, migration
+
+```bash
+ansible-playbook backup.yml                                  # routine
+ansible-playbook backup.yml -e mode=migrate                  # leaves the old host stopped
+ansible-playbook restore.yml -e backup_file=backups/ai-station-<ts>.tar.gz
+```
+
+- **`backup.yml`**
+  - First stops every writer: `platform`, `observability` and the disk probe timer. vLLM keeps running. Expect a few minutes of downtime, so run it off-hours.
+  - Then tars `platform/data` and `observability/data` as 0600, pulls the tar to `deploy/ansible/backups/` (0700 directory, 0600 file) and compares sha256.
+  - Deletes the host's copy only after the checksums match, and keeps the newest `backup_keep` (default 7).
+  - In `routine` mode it starts everything again. In `migrate` mode it leaves the host stopped.
+- **Not backed up:**
+  - `hf-cache` and `vllm-cache`: 28.7 GB that can be downloaded again, but the first download took 76 minutes.
+  - Images, which are rebuilt.
+  - `vault.yml`, which is kept by whoever maintains it.
+- **`restore.yml`**
+  - Stops `platform` and `observability`, extracts with numeric owners, then reapplies the directory owners.
+  - **Never starts anything.** It refuses to overwrite an existing `auth.json` unless given `-e confirm_overwrite=true`.
+- **Migrating to the 96GB machine.** Order matters, so the new host never starts without its data. With both hosts in the inventory, pass `--limit <host>` on every step:
+  1. New host: `site.yml --tags host`. Deploys nothing.
+  2. Old host: `backup.yml -e mode=migrate`. Stops every writer, backs up, stays stopped.
+  3. New host: `restore.yml -e backup_file=…`
+  4. New host: `site.yml --tags stack`
+  5. Run the acceptance checklist, then switch clients to the new IP. Keep the old host stopped as a rollback.
 
 ## Host directories
 
@@ -120,6 +179,7 @@ Each healthcheck tests only its own container. The whole request chain is tested
 
 ## Acceptance checklist (on the machine)
 
+0. `ansible-playbook site.yml --check --diff` shows no secret values, and the real run finishes without errors.
 1. Every `auth.json` ID has the generated shape. This prints counts only, not the IDs:
    ```bash
    sudo jq '[.principals[].id | test("^p_[A-Za-z0-9_-]{21}[AQgw]$")] | {total: length, bad: map(select(. | not)) | length}' /srv/ai/platform/data/auth/auth.json
@@ -140,7 +200,12 @@ Each healthcheck tests only its own container. The whole request chain is tested
 5. B2 dry run:
    - stop `inference`: gateway `/healthz` returns 200, `/readyz` returns 503, and kb stays healthy;
    - start it again: `/readyz` returns to 200.
-6. The disk panel has data. The `disk_probe` timer comes with the Ansible PR.
+6. The disk panel has data (`systemctl list-timers ai-disk-probe.timer` shows it scheduled).
 7. `docker stats`: record vLLM's RAM use.
+8. Firewall: from a machine in `client_subnets`, ports 12599/12598/3000 connect; from one outside it, they time out. This checks the `DOCKER-USER` rules, not just UFW.
+9. Backup/restore drill:
+   - `backup.yml` (routine): the writers and the timer were stopped, then started again;
+   - the tar is 0600 on the host (while it exists) and on the control node;
+   - restore it into a scratch host or directory and check that `auth.json`, `.kb`, the Grafana users and the Loki history are all there.
 
-Not yet verified on the machine: everything above. The CI jobs build the image and test the Alloy allowlist and the dashboard queries against the pinned images, but nothing here has run on the AI Station yet.
+Not yet verified on the machine: everything above. CI builds the image, tests the Alloy allowlist and the dashboard queries against the pinned images, and syntax-checks and lints the playbooks. Nothing here has run on the AI Station yet.

@@ -1,0 +1,18 @@
+---
+# Host setup and deployment of the AI Station.
+#   ansible-playbook site.yml --ask-vault-pass                  # everything
+#   ansible-playbook site.yml --tags host                       # host only, deploys nothing
+#   ansible-playbook site.yml --tags stack -e only=platform     # redeploy the app only
+- name: AI Station
+  hosts: ai_station
+  vars_files:
+    - "{{ vault_file | default('vault.yml') }}"
+  roles:
+    - { role: host_time, tags: [host] }
+    - { role: nvidia_driver, tags: [host] }
+    - { role: docker, tags: [host] }
+    - { role: nvidia_toolkit, tags: [host] }
+    - { role: ai_dirs, tags: [host] }
+    - { role: firewall, tags: [host] }
+    - { role: disk_probe, tags: [host] }
+    - { role: stack, tags: [stack] }

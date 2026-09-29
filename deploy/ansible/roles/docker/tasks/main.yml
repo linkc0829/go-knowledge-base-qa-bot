@@ -1,0 +1,44 @@
+---
+# Docker Engine from Docker's apt repository (POC runbook §4), not the
+# convenience script.
+- name: Add Docker's apt repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: https://download.docker.com/linux/ubuntu
+    suites: ["{{ ansible_facts['distribution_release'] }}"]
+    components: [stable]
+    architectures: [amd64]
+    signed_by: https://download.docker.com/linux/ubuntu/gpg
+
+- name: Install Docker Engine and the Compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+# One file owns daemon.json: default log rotation for every container, and
+# the nvidia runtime that `nvidia-ctk runtime configure` would otherwise add.
+- name: Configure the Docker daemon
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ docker_daemon | to_nice_json }}\n"
+    mode: "0644"
+  vars:
+    docker_daemon:
+      log-driver: json-file
+      log-opts: {max-size: 10m, max-file: "3"}
+      runtimes:
+        nvidia: {path: nvidia-container-runtime, args: []}
+  notify: Restart docker
+
+- name: Start Docker at boot
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started

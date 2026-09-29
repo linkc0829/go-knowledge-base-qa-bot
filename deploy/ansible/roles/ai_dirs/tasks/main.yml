@@ -1,0 +1,42 @@
+---
+# Owners and modes from deploy/README.md "Host directories". Container UIDs:
+# platform 65532 (distroless nonroot), Loki 10001, Alloy 473, Grafana 472:0.
+- name: Create the ailogs group (Alloy reads logs through it)
+  ansible.builtin.group:
+    name: ailogs
+    gid: "{{ ailogs_gid }}"
+
+- name: Create the data directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ ai_root }}/src", owner: root, group: root, mode: "0750" }
+    - { path: "{{ ai_root }}/hf-cache", owner: root, group: root, mode: "0750" }
+    - { path: "{{ ai_root }}/vllm-cache", owner: root, group: root, mode: "0750" }
+    - { path: "{{ ai_root }}/platform/data", owner: root, group: root, mode: "0750" }
+    - { path: "{{ ai_root }}/platform/data/auth", owner: "65532", group: "65532", mode: "0700" }
+    - { path: "{{ ai_root }}/platform/data/docs", owner: "65532", group: "65532", mode: "0750" }
+    - { path: "{{ ai_root }}/platform/data/.kb", owner: "65532", group: "65532", mode: "0750" }
+    # setgid: files created later inherit the ailogs group.
+    - { path: "{{ ai_root }}/platform/data/log", owner: "65532", group: ailogs, mode: "2750" }
+    - { path: "{{ ai_root }}/observability/data", owner: root, group: root, mode: "0750" }
+    - { path: "{{ ai_root }}/observability/data/loki", owner: "10001", group: "10001", mode: "0750" }
+    - { path: "{{ ai_root }}/observability/data/alloy", owner: "473", group: "473", mode: "0750" }
+    - { path: "{{ ai_root }}/observability/data/grafana", owner: "472", group: "0", mode: "0750" }
+
+# zap creates files with the process umask (0644), and distroless has no
+# shell to change it; created here first, the files keep 0640.
+- name: Pre-create the log files
+  ansible.builtin.file:
+    path: "{{ ai_root }}/platform/data/log/{{ item }}"
+    state: touch
+    owner: "65532"
+    group: ailogs
+    mode: "0640"
+    access_time: preserve
+    modification_time: preserve
+  loop: [gateway.log, kb.log, host.log]

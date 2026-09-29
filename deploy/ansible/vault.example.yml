@@ -1,0 +1,9 @@
+---
+# cp vault.example.yml vault.yml && ansible-vault encrypt vault.yml
+# vault.yml is gitignored. Keep the vault password in the maintainers'
+# password manager, never next to backups.
+vault_vllm_api_key: ""          # openssl rand -hex 32
+vault_hf_token: ""              # optional: the pinned checkpoint is not gated
+vault_gemini_api_key: ""        # embeddings upstream (gateway only)
+vault_kb_gateway_token: ""      # kbtoken create -name kb -trusted -workload rag
+vault_grafana_admin_password: "" # openssl rand -base64 24

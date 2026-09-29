@@ -1,0 +1,29 @@
+---
+# POC runbook §3. A new driver needs a reboot; the play reboots only with
+# -e allow_reboot=true and otherwise stops so nothing runs on a stale module.
+- name: Install the NVIDIA driver and matching kernel headers
+  ansible.builtin.apt:
+    name:
+      - "linux-headers-{{ ansible_facts['kernel'] }}"
+      - "{{ nvidia_driver_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: nvidia_driver_install
+
+- name: Reboot to load the new driver
+  ansible.builtin.reboot:
+    reboot_timeout: 900
+  when: nvidia_driver_install is changed and allow_reboot | bool
+
+- name: Stop until the host is rebooted
+  ansible.builtin.fail:
+    msg: >-
+      The NVIDIA driver was installed or updated and needs a reboot. Reboot the
+      host (or rerun with -e allow_reboot=true), then run the play again.
+  when: nvidia_driver_install is changed and not allow_reboot | bool and not ansible_check_mode
+
+- name: Check the GPU is visible
+  ansible.builtin.command: nvidia-smi -L
+  changed_when: false
+  when: not ansible_check_mode

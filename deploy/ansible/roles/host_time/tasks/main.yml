@@ -1,0 +1,31 @@
+---
+# Server stays on UTC (POC runbook §0). The company blocks public NTP, so
+# timesyncd is only enabled once IT provides an internal server.
+- name: Read the timezone
+  ansible.builtin.command: timedatectl show --property=Timezone --value
+  register: host_time_tz
+  changed_when: false
+  check_mode: false
+
+- name: Set the timezone to UTC
+  ansible.builtin.command: timedatectl set-timezone Etc/UTC
+  when: host_time_tz.stdout != "Etc/UTC"
+  changed_when: true
+
+- name: Point timesyncd at the internal NTP server
+  ansible.builtin.copy:
+    dest: /etc/systemd/timesyncd.conf
+    content: |
+      [Time]
+      NTP={{ ntp_server }}
+      FallbackNTP=
+    mode: "0644"
+  when: ntp_server | length > 0
+  notify: Restart timesyncd
+
+- name: Enable timesyncd
+  ansible.builtin.systemd_service:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+  when: ntp_server | length > 0

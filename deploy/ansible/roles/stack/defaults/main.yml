@@ -1,0 +1,2 @@
+---
+stack_projects: [inference, platform, observability]   # start order

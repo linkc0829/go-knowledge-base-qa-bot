@@ -1,0 +1,54 @@
+---
+# Every 10 minutes, one host_disk line per mount into host.log; Alloy ships
+# it and the dashboard's "Disk used" panel draws it (no Prometheus needed).
+- name: Install the disk probe
+  ansible.builtin.copy:
+    dest: /usr/local/bin/ai-disk-probe
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      # Appends one JSON line per mount; the timestamp matches zap's format,
+      # which the Alloy allowlist parses.
+      set -eu
+      out={{ ai_root }}/platform/data/log/host.log
+      ts=$(date +%Y-%m-%dT%H:%M:%S.%3N%z)
+      for m in {{ ai_root }} /var/lib/docker; do
+        [ -d "$m" ] || continue
+        df -P -B1G "$m" | awk -v ts="$ts" -v m="$m" 'NR==2 { sub("%", "", $5);
+          printf "{\"level\":\"info\",\"ts\":\"%s\",\"msg\":\"host_disk\",\"mount\":\"%s\",\"used_pct\":%s,\"avail_gb\":%s}\n", ts, m, $5, $4 }' >> "$out"
+      done
+
+- name: Install the disk probe unit and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: ai-disk-probe.service
+      content: |
+        [Unit]
+        Description=Write disk usage to host.log for Grafana
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/ai-disk-probe
+    - name: ai-disk-probe.timer
+      content: |
+        [Unit]
+        Description=Disk usage probe every 10 minutes
+
+        [Timer]
+        OnBootSec=2min
+        OnUnitActiveSec=10min
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Start the disk probe timer
+  ansible.builtin.systemd_service:
+    name: ai-disk-probe.timer
+    enabled: true
+    state: started
+    daemon_reload: true

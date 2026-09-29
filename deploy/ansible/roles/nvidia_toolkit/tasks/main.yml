@@ -1,0 +1,17 @@
+---
+# NVIDIA Container Toolkit (POC runbook §5). The runtime entry in daemon.json
+# is written by the docker role, so `nvidia-ctk runtime configure` is not run.
+- name: Add the NVIDIA Container Toolkit repository
+  ansible.builtin.deb822_repository:
+    name: nvidia-container-toolkit
+    types: [deb]
+    uris: https://nvidia.github.io/libnvidia-container/stable/deb/amd64
+    suites: ["/"]
+    signed_by: https://nvidia.github.io/libnvidia-container/gpgkey
+
+- name: Install the NVIDIA Container Toolkit
+  ansible.builtin.apt:
+    name: nvidia-container-toolkit
+    state: present
+    update_cache: true
+  notify: Restart docker

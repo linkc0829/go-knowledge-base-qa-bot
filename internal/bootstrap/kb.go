@@ -23,7 +23,8 @@ func NewKBService(cfg *config.Config) *kb.Service {
 		embedder = fake
 	} else {
 		oai := kb.NewOpenAIClient(cfg.OpenAI.APIKey, cfg.OpenAI.BaseURL, cfg.OpenAI.ChatModel, cfg.OpenAI.EmbedModel,
-			kb.ChatOptions{Temperature: cfg.OpenAI.ChatTemperature, MaxTokens: cfg.OpenAI.ChatMaxTokens, ForwardUser: cfg.OpenAI.ForwardUser})
+			kb.ChatOptions{Temperature: cfg.OpenAI.ChatTemperature, MaxTokens: cfg.OpenAI.ChatMaxTokens,
+				ReasoningEffort: cfg.OpenAI.ChatReasoningEffort, ForwardUser: cfg.OpenAI.ForwardUser})
 		llm = oai
 		embedder = oai
 	}
@@ -37,10 +38,11 @@ func ChatRuntime(cfg *config.Config) *kb.ChatConfig {
 		return nil
 	}
 	return &kb.ChatConfig{
-		Model:       cfg.OpenAI.ChatModel,
-		Prompt:      kb.GroundingFingerprint(),
-		Temperature: cfg.OpenAI.ChatTemperature,
-		MaxTokens:   cfg.OpenAI.ChatMaxTokens,
+		Model:           cfg.OpenAI.ChatModel,
+		Prompt:          kb.GroundingFingerprint(),
+		Temperature:     cfg.OpenAI.ChatTemperature,
+		MaxTokens:       cfg.OpenAI.ChatMaxTokens,
+		ReasoningEffort: cfg.OpenAI.ChatReasoningEffort,
 	}
 }
 

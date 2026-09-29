@@ -16,6 +16,8 @@ type ChatConfig struct {
 	Prompt      string  `json:"prompt"`
 	Temperature float64 `json:"temperature"`
 	MaxTokens   int64   `json:"max_tokens,omitempty"`
+	// Thinking on or off changes answers as much as a model swap does.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 type IndexResponse struct {

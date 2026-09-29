@@ -15,14 +15,17 @@ import (
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/shared"
 )
 
 // ChatOptions are the decoding parameters sent with every chat completion.
-// MaxTokens of 0 leaves the field off the request and lets the upstream decide.
+// MaxTokens of 0 and an empty ReasoningEffort leave their fields off the
+// request and let the upstream decide.
 type ChatOptions struct {
-	Temperature float64
-	MaxTokens   int64
-	ForwardUser bool
+	Temperature     float64
+	MaxTokens       int64
+	ReasoningEffort string
+	ForwardUser     bool
 }
 
 // OpenAIClient implements LLM and Embedder.
@@ -196,6 +199,9 @@ func (o *OpenAIClient) Answer(ctx context.Context, query string, sections []Sect
 	}
 	if o.chat.MaxTokens > 0 {
 		params.MaxTokens = openai.Int(o.chat.MaxTokens)
+	}
+	if o.chat.ReasoningEffort != "" {
+		params.ReasoningEffort = shared.ReasoningEffort(o.chat.ReasoningEffort)
 	}
 	var requestOptions []option.RequestOption
 	if o.chat.ForwardUser {

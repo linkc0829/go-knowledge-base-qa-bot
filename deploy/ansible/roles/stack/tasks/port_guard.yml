@@ -1,0 +1,55 @@
+---
+# vLLM (the inference project) needs 127.0.0.1:8000 and most of the GPU.
+# Anything else there - the POC's hand-made `vllm` project, a model test such
+# as `k2-test`, a host process - makes `compose up` fail halfway, or two models
+# fight over VRAM. Nothing is stopped automatically: the operator decides when
+# a model goes down.
+- name: List containers and their published ports
+  ansible.builtin.command: >-
+    docker ps --format
+    '{% raw %}{{.Names}}|{{.Label "com.docker.compose.project"}}|{{.Ports}}{% endraw %}'
+  register: stack_ps
+  changed_when: false
+  check_mode: false
+  # Only --check on a fresh host may lack Docker; a real run must not guess.
+  failed_when: stack_ps.rc != 0 and not ansible_check_mode
+
+# A connect attempt, not `ss`: it needs no netlink and cannot silently find
+# nothing because a tool failed.
+- name: Look for a listener on port 8000
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 8000
+    timeout: 1
+  register: stack_listener
+  check_mode: false
+  failed_when: false
+
+- name: Find what holds port 8000
+  ansible.builtin.set_fact:
+    stack_8000_containers: >-
+      {{ stack_ps.stdout_lines | select('search', ':8000->') | map('split', '|') | list }}
+
+- name: Stop if another container holds port 8000
+  ansible.builtin.fail:
+    msg: >-
+      Port 8000 is held by {{ stack_8000_others | join(', ') }}.
+      Stop it when that model may go down, then rerun: a compose project with
+      `docker compose -p <project> stop`, a plain container with `docker stop <name>`.
+      Restart it later the same way if the inference project is taken down again.
+  vars:
+    # "name" for a plain container, "name (compose project p)" otherwise.
+    stack_8000_others: >-
+      {% set out = [] %}{% for c in stack_8000_containers if c[1] != 'inference' %}
+      {%- set _ = out.append(c[0] ~ (' (compose project ' ~ c[1] ~ ')' if c[1] else '')) %}
+      {%- endfor %}{{ out }}
+  when: stack_8000_containers | rejectattr('1', 'equalto', 'inference') | list | length > 0
+
+- name: Stop if a non-container process holds port 8000
+  ansible.builtin.fail:
+    msg: >-
+      Something outside Docker listens on 127.0.0.1:8000. Find it with
+      `sudo ss -ltnp 'sport = :8000'` and stop it, then rerun.
+  # failed_when: false makes the task always "succeeded"; only a real connect
+  # returns state=started.
+  when: stack_listener.state | default('') == 'started' and stack_8000_containers | length == 0

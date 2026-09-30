@@ -4,22 +4,9 @@
     that: only == 'all' or only in stack_projects
     fail_msg: "only must be all or one of {{ stack_projects | join(', ') }}"
 
-# The POC's hand-made project also binds 127.0.0.1:8000. It is not stopped
-# automatically: the operator decides when vLLM goes down.
-- name: Look for the POC's old vllm project
-  ansible.builtin.command: docker ps -q --filter label=com.docker.compose.project=vllm
-  register: stack_old_vllm
-  changed_when: false
-  check_mode: false
-  failed_when: false
-
-- name: Stop if the old project is still running
-  ansible.builtin.fail:
-    msg: >-
-      The POC's old compose project (/srv/ai/vllm) is still running and holds
-      port 8000. Run `cd /srv/ai/vllm && docker compose down` when vLLM may go
-      down, then rerun.
-  when: stack_old_vllm.stdout | length > 0
+- name: Check nothing else holds vLLM's port
+  ansible.builtin.include_tasks: port_guard.yml
+  when: only in ['all', 'inference']
 
 - name: Install git
   ansible.builtin.apt:

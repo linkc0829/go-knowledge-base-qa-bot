@@ -1,0 +1,69 @@
+---
+# CI only: the stack role's port 8000 guard against real listeners on the
+# (disposable) GitHub runner. It must pass when 8000 is free or held by the
+# inference project, and stop the play for anything else - k2-test on the POC
+# was a plain container the old check could not see.
+#   sudo ansible-playbook -i localhost, -c local tests/port_guard.yml
+- name: Port 8000 guard
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    guard: "{{ playbook_dir }}/../roles/stack/tasks/port_guard.yml"
+  tasks:
+    - name: Free port passes
+      ansible.builtin.include_tasks: "{{ guard }}"
+
+    - name: The inference project on 8000 passes
+      block:
+        - name: Start a container labelled as the inference project
+          ansible.builtin.command: >-
+            docker run -d --name guard-inference -p 127.0.0.1:8000:8000
+            --label com.docker.compose.project=inference busybox sleep 300
+          changed_when: true
+        - name: Run the guard
+          ansible.builtin.include_tasks: "{{ guard }}"
+      always:
+        - name: Remove it
+          ansible.builtin.command: docker rm -f guard-inference
+          changed_when: true
+
+    - name: A plain container on 8000 is refused
+      block:
+        - name: Start a k2-test lookalike
+          ansible.builtin.command: docker run -d --name k2-test -p 127.0.0.1:8000:8000 busybox sleep 300
+          changed_when: true
+        - name: Run the guard
+          ansible.builtin.include_tasks: "{{ guard }}"
+        - name: The guard should have stopped the play
+          ansible.builtin.fail:
+            msg: GUARD_LET_THROUGH
+      rescue:
+        # Match the guard's own wording: the sentinel above must not satisfy it.
+        - name: The guard refused and named the container
+          ansible.builtin.assert:
+            that: "'Port 8000 is held by k2-test' in ansible_failed_result.msg"
+      always:
+        - name: Remove it
+          ansible.builtin.command: docker rm -f k2-test
+          changed_when: true
+
+    - name: A host process on 8000 is refused
+      block:
+        - name: Start a listener outside Docker
+          ansible.builtin.shell: nohup python3 -m http.server 8000 --bind 127.0.0.1 >/dev/null 2>&1 & sleep 1
+          changed_when: true
+        - name: Run the guard
+          ansible.builtin.include_tasks: "{{ guard }}"
+        - name: The guard should have stopped the play
+          ansible.builtin.fail:
+            msg: GUARD_LET_THROUGH
+      rescue:
+        - name: The guard refused a process outside Docker
+          ansible.builtin.assert:
+            that: "'Something outside Docker listens' in ansible_failed_result.msg"
+      always:
+        - name: Stop it
+          ansible.builtin.command: pkill -f "http.server 8000"
+          changed_when: true
+          failed_when: false

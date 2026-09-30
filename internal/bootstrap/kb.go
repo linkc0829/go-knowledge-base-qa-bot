@@ -47,14 +47,14 @@ func ChatRuntime(cfg *config.Config) *kb.ChatConfig {
 }
 
 // KBServerConfig computes the HTTP server configuration for the KB service,
-// scaling WriteTimeout to accommodate full corpus reindexing while maintaining
-// a safety buffer above KB_INDEX_TIMEOUT.
+// scaling WriteTimeout so neither a full reindex (KB_INDEX_TIMEOUT) nor a slow
+// chat answer (KB_CHAT_TIMEOUT) is cut off by the server, with a 10s buffer.
 func KBServerConfig(cfg *config.Config, bindAddress string) httpserver.Config {
 	indexTimeout := cfg.KB.IndexTimeout
 	if indexTimeout <= 0 {
 		indexTimeout = 60 * time.Second
 	}
-	writeTimeout := max(30*time.Second, indexTimeout+10*time.Second)
+	writeTimeout := max(30*time.Second, indexTimeout+10*time.Second, cfg.KB.ChatTimeout+10*time.Second)
 	return httpserver.Config{
 		Port:         cfg.HTTP.Port,
 		BindAddress:  bindAddress,

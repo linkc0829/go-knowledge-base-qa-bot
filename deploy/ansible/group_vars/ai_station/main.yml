@@ -12,6 +12,8 @@ served_model_name: gemma-4-26b-a4b
 # 5.2 concurrent full-length requests at gpu_memory_utilization 0.90.
 vllm_max_model_len: 98304
 kb_embed_model: gemini-embedding-2
+# /chat timeout (retrieval + answer). Raise for a reasoning model.
+kb_chat_timeout: 30s
 
 # Pinned source for the platform image (built on the machine).
 repo_url: https://github.com/linkc0829/llm-platform.git

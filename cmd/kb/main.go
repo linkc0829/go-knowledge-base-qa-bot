@@ -80,7 +80,7 @@ func main() {
 			lg.Sugar().Fatalf("load index: %v", err)
 		}
 	}
-	h := kb.NewHandler(svc, lg, httpPrincipalProvider(cfg), bootstrap.ChatRuntime(cfg), cfg.KB.IndexTimeout)
+	h := kb.NewHandler(svc, lg, httpPrincipalProvider(cfg), bootstrap.ChatRuntime(cfg), cfg.KB.IndexTimeout, cfg.KB.ChatTimeout)
 
 	routeGuards := kb.RouteGuards{AllowUnauthenticated: cfg.Auth.Disabled}
 	if !cfg.Auth.Disabled {

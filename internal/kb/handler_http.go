@@ -26,14 +26,20 @@ type Handler struct {
 	principal    func(*gin.Context) shared.Principal
 	chatConfig   *ChatConfig
 	indexTimeout time.Duration
+	chatTimeout  time.Duration
 }
 
-func NewHandler(svc *Service, logger *zap.Logger, principal func(*gin.Context) shared.Principal, chat *ChatConfig, indexTimeout time.Duration) *Handler {
+func NewHandler(svc *Service, logger *zap.Logger, principal func(*gin.Context) shared.Principal, chat *ChatConfig, indexTimeout, chatTimeout time.Duration) *Handler {
 	if indexTimeout <= 0 {
 		indexTimeout = 60 * time.Second
 	}
-	return &Handler{svc: svc, logger: logger, principal: principal, chatConfig: chat, indexTimeout: indexTimeout}
+	return &Handler{svc: svc, logger: logger, principal: principal, chatConfig: chat, indexTimeout: indexTimeout, chatTimeout: chatTimeout}
 }
+
+// defaultChatTimeout bounds one /chat request, retrieval and model call
+// together. Reasoning models need more: K2 with thinking on answered 4 of 606
+// eval questions in over 30s. Set KB_CHAT_TIMEOUT for those.
+const defaultChatTimeout = 30 * time.Second
 
 // AnonymousPrincipal is the explicit full-access principal for unauthenticated
 // local HTTP mode.
@@ -96,7 +102,11 @@ func (h *Handler) chat(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	timeout := h.chatTimeout
+	if timeout <= 0 {
+		timeout = defaultChatTimeout
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
 	principal := shared.Principal{}

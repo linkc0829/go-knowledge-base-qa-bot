@@ -67,6 +67,7 @@ type KBConfig struct {
 	DocsDir      string        `mapstructure:"docs_dir"`
 	IndexDir     string        `mapstructure:"index_dir"`
 	IndexTimeout time.Duration `mapstructure:"index_timeout"`
+	ChatTimeout  time.Duration `mapstructure:"chat_timeout"`
 }
 
 type GatewayConfig struct {
@@ -153,6 +154,7 @@ func newViper() *viper.Viper {
 	v.SetDefault("kb.docs_dir", "docs")
 	v.SetDefault("kb.index_dir", ".kb")
 	v.SetDefault("kb.index_timeout", "60s")
+	v.SetDefault("kb.chat_timeout", "30s")
 	v.SetDefault("gateway.max_inflight_global", 64)
 	v.SetDefault("gateway.max_inflight_per_user", 4)
 	v.SetDefault("gateway.port", 12599)
@@ -183,6 +185,7 @@ func newViper() *viper.Viper {
 		"kb.docs_dir":                     "KB_DOCS_DIR",
 		"kb.index_dir":                    "KB_INDEX_DIR",
 		"kb.index_timeout":                "KB_INDEX_TIMEOUT",
+		"kb.chat_timeout":                 "KB_CHAT_TIMEOUT",
 		"auth.file":                       "KB_AUTH_FILE",
 		"auth.disabled":                   "KB_AUTH_DISABLED",
 		"gateway.upstream_base_url":       "GATEWAY_UPSTREAM_BASE_URL",

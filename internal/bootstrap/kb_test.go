@@ -22,8 +22,15 @@ func TestKBServerConfig_WriteTimeoutCalculation(t *testing.T) {
 	tests := []struct {
 		name         string
 		indexTimeout time.Duration
+		chatTimeout  time.Duration
 		wantTimeout  time.Duration
 	}{
+		{
+			// Otherwise the server would cut off a slow answer the handler still allows.
+			name:        "long_chat_timeout_lifts_write_timeout",
+			chatTimeout: 3 * time.Minute,
+			wantTimeout: 3*time.Minute + 10*time.Second,
+		},
 		{
 			name:         "custom_10m_timeout_adds_10s_buffer",
 			indexTimeout: 10 * time.Minute,
@@ -45,7 +52,7 @@ func TestKBServerConfig_WriteTimeoutCalculation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
 				HTTP: config.HTTPConfig{Port: 12598},
-				KB:   config.KBConfig{IndexTimeout: tt.indexTimeout},
+				KB:   config.KBConfig{IndexTimeout: tt.indexTimeout, ChatTimeout: tt.chatTimeout},
 			}
 			serverCfg := KBServerConfig(cfg, "127.0.0.1")
 			if serverCfg.WriteTimeout == nil {

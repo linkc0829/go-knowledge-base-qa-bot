@@ -99,6 +99,7 @@
         GATEWAY_MAX_INFLIGHT_PER_USER={{ gateway_max_inflight_per_user }}
         GATEWAY_MAX_OUTPUT_TOKENS={{ gateway_max_output_tokens }}
         KB_CHAT_REASONING_EFFORT={{ 'high' if inference_model == 'k2' else '' }}
+        KB_CHAT_MAX_TOKENS={{ kb_chat_max_tokens }}
     - project: observability
       content: |
         DATA_DIR={{ ai_root }}/observability/data

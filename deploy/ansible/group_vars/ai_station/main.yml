@@ -32,6 +32,8 @@ k2_image: local/llama-k2:42adf01
 k2_gguf: K2-Horizon-MoVA-36B-A4B-Q6_K.gguf
 k2_ctx: 163840
 k2_served_model_name: k2-horizon
+# Same for both models so the comparison is fair; matches the local 606-question runs.
+kb_chat_max_tokens: 8192
 
 # Pinned source for the platform image (built on the machine).
 repo_url: https://github.com/linkc0829/llm-platform.git

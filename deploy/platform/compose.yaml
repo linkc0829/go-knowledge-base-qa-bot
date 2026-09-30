@@ -72,6 +72,8 @@ services:
       KB_EMBED_MODEL: ${KB_EMBED_MODEL:-gemini-embedding-2}
       # Sends X-On-Behalf-Of so gateway_usage is per asking user, not all "kb".
       KB_LLM_FORWARD_USER: "true"
+      # One /chat, retrieval plus the model answer. Raise for reasoning models.
+      KB_CHAT_TIMEOUT: ${KB_CHAT_TIMEOUT:-30s}
       KB_DOCS_DIR: docs
       KB_INDEX_DIR: .kb
     volumes:

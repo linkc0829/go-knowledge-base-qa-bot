@@ -302,6 +302,32 @@ func TestLoadGatewayConfig(t *testing.T) {
 	})
 }
 
+// KB_CHAT_TIMEOUT must reach the handler from the environment (how compose
+// passes it) and keep the old 30s behaviour when unset.
+func TestLoadKBChatTimeout(t *testing.T) {
+	unsetEnv(t, "OPENAI_API_KEY")
+	unsetEnv(t, "KB_CHAT_TIMEOUT")
+	t.Setenv("KB_LLM_MODE", "fake")
+	t.Chdir(t.TempDir())
+
+	cfg, err := LoadKB()
+	if err != nil {
+		t.Fatalf("LoadKB: %v", err)
+	}
+	if cfg.KB.ChatTimeout != 30*time.Second {
+		t.Errorf("default ChatTimeout = %v, want 30s", cfg.KB.ChatTimeout)
+	}
+
+	t.Setenv("KB_CHAT_TIMEOUT", "90s")
+	cfg, err = LoadKB()
+	if err != nil {
+		t.Fatalf("LoadKB: %v", err)
+	}
+	if cfg.KB.ChatTimeout != 90*time.Second {
+		t.Errorf("ChatTimeout with KB_CHAT_TIMEOUT=90s = %v, want 90s", cfg.KB.ChatTimeout)
+	}
+}
+
 func TestLoadKBIndexTimeout(t *testing.T) {
 	unsetEnv(t, "OPENAI_API_KEY")
 	unsetEnv(t, "KB_LLM_MODE")

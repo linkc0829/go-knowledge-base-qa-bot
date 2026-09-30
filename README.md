@@ -193,6 +193,7 @@ Environment variables:
 - `KB_CHAT_TEMPERATURE` (default `0`) / `KB_CHAT_MAX_TOKENS` (default `1024`, `0` omits the field) - decoding parameters sent with every chat completion. Without them the upstream falls back to the served model's own `generation_config`, so repeated eval rounds disagree with each other. `GET /health` reports both alongside the chat model and a fingerprint of the grounding prompt, so an eval run can prove which build answered it.
 - `KB_DOCS_DIR` / `KB_INDEX_DIR` - source and local index directories.
 - `KB_INDEX_TIMEOUT` - `POST /index` timeout, default `60s`. The KB server's write timeout is `max(30s, KB_INDEX_TIMEOUT + 10s)`. Raise it, for example to `10m`, when a full reindex re-embeds the whole corpus.
+- `KB_CHAT_TIMEOUT` - `POST /chat` timeout, default `30s`, covering retrieval and the model answer. The write timeout above also stays at least `KB_CHAT_TIMEOUT + 10s`. Raise it for reasoning models: with thinking on, K2 answered 4 of 606 eval questions in over 30s, and a timeout returns 503.
 - `KB_LLM_FORWARD_USER` - default `false`. When `true`, the caller's principal ID goes out as `X-On-Behalf-Of`. Enable it only when `OPENAI_BASE_URL` is the internal gateway, never a public provider.
 
 Gateway (`cmd/gateway`; it reads `KB_AUTH_FILE` and the `LOG_*` variables too):

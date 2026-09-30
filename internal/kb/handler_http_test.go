@@ -28,6 +28,7 @@ type fakeHandlerService struct {
 	chatErr       error
 	chatQuery     string
 	chatOwnerID   string
+	chatBudget    time.Duration // time left on the request context when the service is called
 	vectorsState  string
 }
 
@@ -35,7 +36,10 @@ func (f *fakeHandlerService) Index(_ context.Context) (int, int, error) {
 	return f.indexFiles, f.indexSections, f.indexErr
 }
 
-func (f *fakeHandlerService) ChatWithMetrics(_ context.Context, principal shared.Principal, query, _ string) (Answer, string, RetrievalMetrics, error) {
+func (f *fakeHandlerService) ChatWithMetrics(ctx context.Context, principal shared.Principal, query, _ string) (Answer, string, RetrievalMetrics, error) {
+	if deadline, ok := ctx.Deadline(); ok {
+		f.chatBudget = time.Until(deadline)
+	}
 	f.chatQuery = query
 	f.chatOwnerID = principal.ID
 	return f.chatAnswer, f.chatSessionID, f.chatMetrics, f.chatErr
@@ -288,5 +292,36 @@ func TestToLLMStats(t *testing.T) {
 	}
 	if got := toLLMStats(&Completion{CompletionTokens: 50, Duration: time.Second}); got.TPS != 0 {
 		t.Errorf("no first token: TPS = %v, want 0", got.TPS)
+	}
+}
+
+// A reasoning model's slowest answers run past 30s; KB_CHAT_TIMEOUT must
+// actually be the budget the service gets, and unset must stay 30s.
+func TestHandlerChatTimeout(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured time.Duration
+		want       time.Duration
+	}{
+		{name: "unset_keeps_30s", configured: 0, want: 30 * time.Second},
+		{name: "configured_90s", configured: 90 * time.Second, want: 90 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &fakeHandlerService{}
+			r := gin.New()
+			RegisterRoutes(r.Group(""), &Handler{svc: svc, principal: AnonymousPrincipal, chatTimeout: tt.configured},
+				RouteGuards{AllowUnauthenticated: true})
+
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/chat", strings.NewReader(`{"query":"q"}`)))
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("POST /chat status = %d body = %s", w.Code, w.Body.String())
+			}
+			if svc.chatBudget <= tt.want-2*time.Second || svc.chatBudget > tt.want {
+				t.Errorf("service got a %v budget, want about %v", svc.chatBudget, tt.want)
+			}
+		})
 	}
 }

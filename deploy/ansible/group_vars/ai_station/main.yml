@@ -25,6 +25,14 @@ gateway_max_output_tokens: 16384
 # /chat timeout (retrieval + answer). Raise for a reasoning model.
 kb_chat_timeout: 30s
 
+# EXPERIMENT (exp/k2-ansible): which model the inference project runs.
+# -e inference_model=k2 serves K2 under its own name and turns KB thinking on.
+inference_model: gemma
+k2_image: local/llama-k2:42adf01
+k2_gguf: K2-Horizon-MoVA-36B-A4B-Q6_K.gguf
+k2_ctx: 163840
+k2_served_model_name: k2-horizon
+
 # Pinned source for the platform image (built on the machine).
 repo_url: https://github.com/linkc0829/llm-platform.git
 repo_ref: main   # set to a tag or commit SHA for a reproducible deploy

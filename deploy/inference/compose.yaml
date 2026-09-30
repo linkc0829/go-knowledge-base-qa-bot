@@ -4,8 +4,11 @@
 #   docker compose up -d
 name: inference
 
+# EXPERIMENT (exp/k2-ansible, not for main): COMPOSE_PROFILES in .env picks
+# the model, gemma (vllm) or k2 (llama.cpp). Only one fits on the 48GB card.
 services:
   vllm:
+    profiles: [gemma]
     image: ${VLLM_IMAGE:?pin an exact vllm/vllm-openai tag}
     runtime: nvidia
     ipc: host
@@ -54,6 +57,61 @@ services:
       timeout: 10s
       retries: 20
       start_period: 20m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+  # K2 Horizon MoVA 36B-A4B (Q6_K GGUF) on the IFM llama.cpp fork: the same
+  # flags as the hand-run k2-test container, but under its real model name so
+  # gateway_usage / llm_usage / the dashboard say which model answered.
+  k2:
+    profiles: [k2]
+    # ponytail: built by hand on the POC; Ansible checks it exists, it does not build it.
+    image: ${K2_IMAGE:-local/llama-k2:42adf01}
+    restart: unless-stopped
+    environment:
+      LLAMA_API_KEY: ${VLLM_API_KEY:?shared with the gateway}
+    command:
+      - -m
+      - /gguf/${K2_GGUF:-K2-Horizon-MoVA-36B-A4B-Q6_K.gguf}
+      - --alias
+      - ${SERVED_MODEL_NAME:-k2-horizon}
+      - -ngl
+      - "99"
+      - -c
+      - "${K2_CTX:-163840}"   # KV shared by 4 slots: a total, not per request
+      - -ctk
+      - q8_0
+      - -ctv
+      - q8_0
+      - --jinja
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      ai-net:
+        # The gateway's upstream stays http://vllm:8000 whichever model runs.
+        aliases: [vllm]
+    volumes:
+      - ${GGUF_DIR:-/srv/ai/gguf}:/gguf:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # llama-server's /health needs no key. If this image has no curl, the
+    # container shows "unhealthy" but still serves; check /health by hand.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 10m
     logging:
       driver: json-file
       options: {max-size: 10m, max-file: "3"}

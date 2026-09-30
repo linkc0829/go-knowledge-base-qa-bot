@@ -4,6 +4,41 @@
     that: only == 'all' or only in stack_projects
     fail_msg: "only must be all or one of {{ stack_projects | join(', ') }}"
 
+- name: Check -e inference_model
+  ansible.builtin.assert:
+    that: inference_model in ['gemma', 'k2']
+    fail_msg: inference_model must be gemma or k2
+
+# The model name every client and log sees (vLLM --served-model-name or the
+# llama.cpp --alias); KB_CHAT_MODEL follows it.
+- name: Pick the served model name
+  ansible.builtin.set_fact:
+    stack_served_model: "{{ k2_served_model_name if inference_model == 'k2' else served_model_name }}"
+
+# The K2 image is built by hand on the host and the GGUF copied there; say so
+# up front instead of failing inside compose.
+- name: Check the K2 image and weights are on the host
+  when: inference_model == 'k2' and only in ['all', 'inference']
+  block:
+    - name: Look for the K2 image
+      ansible.builtin.command: "docker image inspect {{ k2_image }}"
+      register: stack_k2_image
+      changed_when: false
+      check_mode: false
+      failed_when: false
+
+    - name: Look for the K2 GGUF
+      ansible.builtin.stat:
+        path: "{{ ai_root }}/gguf/{{ k2_gguf }}"
+      register: stack_k2_gguf
+
+    - name: Stop if either is missing
+      ansible.builtin.fail:
+        msg: >-
+          K2 needs the image {{ k2_image }} ({{ 'found' if stack_k2_image.rc == 0 else 'MISSING' }})
+          and {{ ai_root }}/gguf/{{ k2_gguf }} ({{ 'found' if stack_k2_gguf.stat.exists else 'MISSING' }}).
+      when: stack_k2_image.rc != 0 or not stack_k2_gguf.stat.exists
+
 - name: Check nothing else holds vLLM's port
   ansible.builtin.include_tasks: port_guard.yml
   when: only in ['all', 'inference']
@@ -36,10 +71,15 @@
   loop:
     - project: inference
       content: |
+        COMPOSE_PROFILES={{ inference_model }}
         VLLM_IMAGE={{ vllm_image }}
         MODEL_ID={{ model_id }}
         MODEL_REVISION={{ model_revision }}
-        SERVED_MODEL_NAME={{ served_model_name }}
+        SERVED_MODEL_NAME={{ stack_served_model }}
+        K2_IMAGE={{ k2_image }}
+        K2_GGUF={{ k2_gguf }}
+        K2_CTX={{ k2_ctx }}
+        GGUF_DIR={{ ai_root }}/gguf
         VLLM_MAX_MODEL_LEN={{ vllm_max_model_len }}
         VLLM_MAX_NUM_SEQS={{ inference_max_seqs }}
         VLLM_API_KEY={{ vault_vllm_api_key }}
@@ -52,12 +92,13 @@
         VLLM_API_KEY={{ vault_vllm_api_key }}
         GEMINI_API_KEY={{ vault_gemini_api_key }}
         KB_GATEWAY_TOKEN={{ vault_kb_gateway_token }}
-        SERVED_MODEL_NAME={{ served_model_name }}
+        SERVED_MODEL_NAME={{ stack_served_model }}
         KB_EMBED_MODEL={{ kb_embed_model }}
         KB_CHAT_TIMEOUT={{ kb_chat_timeout }}
         GATEWAY_MAX_INFLIGHT={{ inference_max_seqs }}
         GATEWAY_MAX_INFLIGHT_PER_USER={{ gateway_max_inflight_per_user }}
         GATEWAY_MAX_OUTPUT_TOKENS={{ gateway_max_output_tokens }}
+        KB_CHAT_REASONING_EFFORT={{ 'high' if inference_model == 'k2' else '' }}
     - project: observability
       content: |
         DATA_DIR={{ ai_root }}/observability/data
@@ -88,6 +129,18 @@
       {{ ai_root }}/platform/data/auth/auth.json is missing. Restore it
       (restore.yml) or bootstrap it: see "First deploy" in deploy/README.md.
   when: not stack_auth.stat.exists and (only in ['all', 'platform'])
+
+# Switching models: compose up only touches services in the active profile, so
+# the other model would keep port 8000 and its VRAM. Stop it first.
+- name: Stop the model that is not selected
+  ansible.builtin.command: >-
+    docker compose --profile gemma --profile k2 stop
+    {{ 'vllm' if inference_model == 'k2' else 'k2' }}
+  args:
+    chdir: "{{ repo_dir }}/deploy/inference"
+  register: stack_other_model
+  changed_when: stack_other_model.stderr is search('Stopped')
+  when: only in ['all', 'inference']
 
 # In order, one at a time: depends_on cannot cross projects, and the gateway
 # does not wait for vLLM (its /readyz reports 503 until vLLM is up).

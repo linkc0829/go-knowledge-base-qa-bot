@@ -133,9 +133,13 @@ func TestAnswerSendsDecodingParams(t *testing.T) {
 		options       ChatOptions
 		wantTemp      float64
 		wantMaxTokens any
+		wantEffort    any
 	}{
 		{name: "greedy_with_limit", options: ChatOptions{Temperature: 0, MaxTokens: 1024}, wantTemp: 0, wantMaxTokens: float64(1024)},
 		{name: "zero_max_tokens_omits_field", options: ChatOptions{Temperature: 0.2}, wantTemp: 0.2, wantMaxTokens: nil},
+		// A thinking model left to its default can spend the whole max_tokens
+		// budget on reasoning and return an empty answer.
+		{name: "reasoning_effort_sent", options: ChatOptions{ReasoningEffort: "none"}, wantEffort: "none"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -157,6 +161,9 @@ func TestAnswerSendsDecodingParams(t *testing.T) {
 			}
 			if got := request["max_tokens"]; got != tt.wantMaxTokens {
 				t.Errorf("max_tokens = %#v, want %#v", got, tt.wantMaxTokens)
+			}
+			if got := request["reasoning_effort"]; got != tt.wantEffort {
+				t.Errorf("reasoning_effort = %#v, want %#v", got, tt.wantEffort)
 			}
 		})
 	}

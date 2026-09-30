@@ -55,6 +55,9 @@ type OpenAIConfig struct {
 	// 0 leaves max_tokens off the request. Answers cite their sources in the
 	// closing lines, so a truncating limit costs the citation, not just prose.
 	ChatMaxTokens int64 `mapstructure:"chat_max_tokens"`
+	// Sent as reasoning_effort; empty leaves it off and the served model
+	// decides. K2 Horizon thinks by default, which multiplies answer latency.
+	ChatReasoningEffort string `mapstructure:"chat_reasoning_effort"`
 	// ForwardUser attaches X-On-Behalf-Of: <user_id> on outbound chat requests.
 	// Only enable when targeting the internal Gateway, never public cloud providers.
 	ForwardUser bool `mapstructure:"forward_user"`
@@ -145,6 +148,7 @@ func newViper() *viper.Viper {
 	v.SetDefault("openai.embed_model", "text-embedding-3-small")
 	v.SetDefault("openai.chat_temperature", 0)
 	v.SetDefault("openai.chat_max_tokens", 1024)
+	v.SetDefault("openai.chat_reasoning_effort", "")
 	v.SetDefault("openai.forward_user", false)
 	v.SetDefault("kb.docs_dir", "docs")
 	v.SetDefault("kb.index_dir", ".kb")
@@ -173,6 +177,7 @@ func newViper() *viper.Viper {
 		"openai.chat_model":               "KB_CHAT_MODEL",
 		"openai.chat_temperature":         "KB_CHAT_TEMPERATURE",
 		"openai.chat_max_tokens":          "KB_CHAT_MAX_TOKENS",
+		"openai.chat_reasoning_effort":    "KB_CHAT_REASONING_EFFORT",
 		"openai.embed_model":              "KB_EMBED_MODEL",
 		"openai.forward_user":             "KB_LLM_FORWARD_USER",
 		"kb.docs_dir":                     "KB_DOCS_DIR",

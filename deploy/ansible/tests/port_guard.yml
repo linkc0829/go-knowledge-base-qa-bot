@@ -37,11 +37,12 @@
           ansible.builtin.include_tasks: "{{ guard }}"
         - name: The guard should have stopped the play
           ansible.builtin.fail:
-            msg: guard let k2-test through
+            msg: GUARD_LET_THROUGH
       rescue:
-        - name: The failure names the container
+        # Match the guard's own wording: the sentinel above must not satisfy it.
+        - name: The guard refused and named the container
           ansible.builtin.assert:
-            that: "'k2-test' in ansible_failed_result.msg"
+            that: "'Port 8000 is held by k2-test' in ansible_failed_result.msg"
       always:
         - name: Remove it
           ansible.builtin.command: docker rm -f k2-test
@@ -56,11 +57,11 @@
           ansible.builtin.include_tasks: "{{ guard }}"
         - name: The guard should have stopped the play
           ansible.builtin.fail:
-            msg: guard let a host process through
+            msg: GUARD_LET_THROUGH
       rescue:
-        - name: The failure says it is outside Docker
+        - name: The guard refused a process outside Docker
           ansible.builtin.assert:
-            that: "'outside Docker' in ansible_failed_result.msg"
+            that: "'Something outside Docker listens' in ansible_failed_result.msg"
       always:
         - name: Stop it
           ansible.builtin.command: pkill -f "http.server 8000"

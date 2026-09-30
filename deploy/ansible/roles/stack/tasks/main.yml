@@ -151,3 +151,8 @@
   loop: "{{ stack_projects if only == 'all' else [only] }}"
   register: stack_up
   changed_when: stack_up.stderr is search('Recreated|Created|Started|Built')
+  # Each build re-resolves base images; on the POC gcr.io sometimes resolves
+  # to IPv6, which has no route there ("network is unreachable"). Retry.
+  retries: 2
+  delay: 15
+  until: stack_up is succeeded

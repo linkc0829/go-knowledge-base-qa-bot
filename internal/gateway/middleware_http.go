@@ -142,15 +142,16 @@ func metricsFrom(c *gin.Context) *requestMetrics {
 }
 
 // prepareChat forces stream_options.include_usage on stream requests so
-// usage can be logged. An unparseable body is forwarded unchanged: the
-// upstream owns chat request validation.
-func prepareChat(c *gin.Context) {
+// usage can be logged, and caps the requested output length. An unparseable
+// body is forwarded unchanged: the upstream owns chat request validation.
+func (h *Handler) prepareChat(c *gin.Context) {
 	metrics := metricsFrom(c)
 	body, ok := readBody(c, metrics)
 	if !ok {
 		return
 	}
-	if payload, err := decodeBody(body); err == nil {
+	if payload, err := decodeBody(body); err == nil && payload != nil {
+		changed := false
 		if stream, ok := payload["stream"].(bool); ok && stream {
 			metrics.isStream = true
 			streamOpts, ok := payload["stream_options"].(map[string]any)
@@ -162,7 +163,15 @@ func prepareChat(c *gin.Context) {
 			// client that did not ask for it never sees the extra chunk.
 			metrics.hideUsage = streamOpts["include_usage"] != true
 			streamOpts["include_usage"] = true
-
+			changed = true
+		}
+		// Only chat gets a missing limit filled in: /v1/completions already
+		// defaults to 16 tokens, and filling it would raise that to the cap.
+		isChat := strings.HasSuffix(c.FullPath(), "/chat/completions")
+		if capOutputTokens(payload, int64(h.maxOutputTokens), isChat) {
+			changed = true
+		}
+		if changed {
 			if newBody, err := json.Marshal(payload); err == nil {
 				body = newBody
 			}

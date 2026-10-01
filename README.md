@@ -168,7 +168,8 @@ Any other path or method returns 404 and is never forwarded.
 
 - **Auth.** Bearer tokens come from the same `KB_AUTH_FILE` as `cmd/kb`. The gateway checks the file's mtime every 10s and reloads it. If a reload finds the file invalid, the previous snapshot stays in place. A file with no principals is valid and rejects every token.
 - **Per-user attribution.** Only a `trusted` token may name the real caller in `X-On-Behalf-Of`. The header is ignored for every other token, and the gateway always strips it before forwarding. Set `KB_LLM_FORWARD_USER=true` so the KB attaches it.
-- **Admission.** In-flight requests are capped per effective user (`GATEWAY_MAX_INFLIGHT_PER_USER`) and globally (`GATEWAY_MAX_INFLIGHT`). A request over either cap gets `429` and `Retry-After: 1` right away. Nothing is queued. The counters live in process memory: they reset on restart and are not shared between instances.
+- **Admission.** In-flight requests are capped per effective user (`GATEWAY_MAX_INFLIGHT_PER_USER`) and globally (`GATEWAY_MAX_INFLIGHT`). A request over either cap gets `429` and `Retry-After: 1` right away. Nothing is queued. The counters live in process memory: they reset on restart and are not shared between instances. Deployed, the global cap equals the model's `--max-num-seqs`, so overload is shed here rather than queued inside vLLM.
+- **Output cap.** `max_tokens` and `max_completion_tokens` above `GATEWAY_MAX_OUTPUT_TOKENS` are lowered to it, and a chat request that sets neither gets it, so a reasoning model stuck thinking cannot hold a slot for minutes. `/v1/completions` keeps its own default when unset.
 - **Embedding model binding.** When `GATEWAY_EMBED_MODEL` is set, a `/v1/embeddings` request with any other model name, no model, or invalid JSON gets `400` and is never forwarded. The gateway checks only the requested name, not which model the backend has loaded.
 - **Usage log.** Each authenticated request writes one `gateway_usage` line with `user_id`, `user_kind` (`user`/`test`/`service`, or `unknown` for an `X-On-Behalf-Of` ID not in `auth.json`), `principal_id`, `workload`, `model`, `status`, token counts, latency, `ttft_ms` for streams, and `error`. Embedding lines also carry `input_count` and `input_chars`, because some upstreams return no usage. Prompts and responses are never logged. For streams, the gateway adds `stream_options.include_usage=true` unless the client set it. A client that sends `false` keeps it, and that request logs 0 tokens.
 - **Errors.** Client cancel is logged as `499`. An upstream that sends no response headers within `GATEWAY_UPSTREAM_HEADER_TIMEOUT` gets `504`. Other upstream failures get `502` with only an error code in the body. A body over 4MB gets `413`, and an unreadable body gets `400`. The server has no write timeout, so long streams are never cut off.
@@ -203,7 +204,8 @@ Gateway (`cmd/gateway`; it reads `KB_AUTH_FILE` and the `LOG_*` variables too):
 - `GATEWAY_UPSTREAM_HEADER_TIMEOUT` - default `300s`.
 - `GATEWAY_EMBED_UPSTREAM_BASE_URL` / `GATEWAY_EMBED_UPSTREAM_API_KEY` - optional dedicated embedding upstream. Give the full base URL including its version path (Google's is `/v1beta/openai`). This requires `GATEWAY_EMBED_MODEL`.
 - `GATEWAY_EMBED_MODEL` - the only embedding model name accepted.
-- `GATEWAY_MAX_INFLIGHT` (default `64`) / `GATEWAY_MAX_INFLIGHT_PER_USER` (default `4`) - `0` or less means unlimited.
+- `GATEWAY_MAX_INFLIGHT` (default `64`) / `GATEWAY_MAX_INFLIGHT_PER_USER` (default `4`) - `0` or less means unlimited. `deploy/` sets them to the model's `--max-num-seqs` and half of it.
+- `GATEWAY_MAX_OUTPUT_TOKENS` - default `16384`, `0` disables the cap.
 - `GATEWAY_PORT` - default `12599`.
 - `GATEWAY_LOG_OUTPUT` - default `stdout,log/gateway.log`.
 

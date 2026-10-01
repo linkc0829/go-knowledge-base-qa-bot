@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"encoding/json"
 	"sync"
 )
 
@@ -74,4 +75,37 @@ func (l *Limiter) Snapshot() (global int, users map[string]int) {
 		users[k] = v
 	}
 	return l.globalInflight, users
+}
+
+// capOutputTokens clamps max_tokens and max_completion_tokens in a decoded
+// request body to limit, so one runaway generation (a reasoning model that
+// never stops thinking) cannot hold a backend slot for minutes. With
+// fillMissing, a body that sets neither gets max_tokens = limit. Values that
+// are not integers are left for the upstream to reject. limit <= 0 disables
+// the cap. It reports whether payload changed.
+func capOutputTokens(payload map[string]any, limit int64, fillMissing bool) bool {
+	if limit <= 0 {
+		return false
+	}
+	changed, found := false, false
+	for _, key := range []string{"max_tokens", "max_completion_tokens"} {
+		v, ok := payload[key]
+		if !ok || v == nil {
+			continue
+		}
+		found = true
+		n, ok := v.(json.Number)
+		if !ok {
+			continue
+		}
+		if i, err := n.Int64(); err == nil && i > limit {
+			payload[key] = limit
+			changed = true
+		}
+	}
+	if !found && fillMissing {
+		payload["max_tokens"] = limit
+		changed = true
+	}
+	return changed
 }

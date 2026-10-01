@@ -28,11 +28,14 @@ const metricsContextKey contextKey = "gateway.metrics"
 // control, stream usage extraction, and structured usage logging.
 type Handler struct {
 	embedModel string
-	limiter    *Limiter
-	resolver   TokenResolver
-	logger     *zap.Logger
-	chatProxy  *httputil.ReverseProxy
-	embedProxy *httputil.ReverseProxy
+	// maxOutputTokens caps max_tokens / max_completion_tokens on chat and
+	// completion requests; 0 leaves them untouched.
+	maxOutputTokens int
+	limiter         *Limiter
+	resolver        TokenResolver
+	logger          *zap.Logger
+	chatProxy       *httputil.ReverseProxy
+	embedProxy      *httputil.ReverseProxy
 	// readyURL / readyKey / readyClient back /readyz: the chat upstream's
 	// model list, the cheapest call that proves it can serve.
 	readyURL    string
@@ -46,7 +49,7 @@ type Handler struct {
 func NewHandler(
 	upstreamURL *url.URL, upstreamKey string,
 	embedUpstreamURL *url.URL, embedUpstreamKey, embedModel string,
-	limiter *Limiter, resolver TokenResolver, headerTimeout time.Duration, logger *zap.Logger,
+	limiter *Limiter, resolver TokenResolver, headerTimeout time.Duration, maxOutputTokens int, logger *zap.Logger,
 ) *Handler {
 	if headerTimeout <= 0 {
 		headerTimeout = 300 * time.Second
@@ -67,13 +70,14 @@ func NewHandler(
 	}
 
 	h := &Handler{
-		embedModel: embedModel,
-		limiter:    limiter,
-		resolver:   resolver,
-		logger:     logger,
-		chatProxy:  newProxy(transport, upstreamURL, upstreamKey, false),
-		readyURL:   singleJoiningSlash(upstreamURL.String(), "/v1/models"),
-		readyKey:   upstreamKey,
+		embedModel:      embedModel,
+		maxOutputTokens: maxOutputTokens,
+		limiter:         limiter,
+		resolver:        resolver,
+		logger:          logger,
+		chatProxy:       newProxy(transport, upstreamURL, upstreamKey, false),
+		readyURL:        singleJoiningSlash(upstreamURL.String(), "/v1/models"),
+		readyKey:        upstreamKey,
 		// ponytail: fixed 2s; a probe slower than that is a not-ready answer anyway.
 		readyClient: &http.Client{Transport: transport, Timeout: 2 * time.Second},
 	}

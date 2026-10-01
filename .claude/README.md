@@ -4,7 +4,7 @@ Repo-level configuration for Claude Code.
 
 ## Files
 
-- `settings.json` — pre-approves permissions for the tools this project uses (`make`, `go test`, `sqlc`, `migrate`, `mockgen`, read-only git, file readers/searchers). This lets the verify loop (`make lint && make test`) run without permission prompts.
+- `settings.json` — pre-approves permissions for the tools this project uses (`make`, `go test`, `golangci-lint`, read-only git, file readers/searchers). This lets the verify loop (`make lint && make test`) run without permission prompts.
 - `skills/` — project-specific skills loaded on demand:
   - `new-feature/` — checklist + scaffolder reference for adding a feature
   - `go-hex-antipatterns/` — BAD/GOOD examples for review/refactor

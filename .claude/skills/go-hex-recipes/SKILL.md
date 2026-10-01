@@ -16,39 +16,41 @@ description: Recipes for common modifications to an existing feature in this hex
 
 ## Add a new outbound dependency to a service
 
-E.g. service needs Redis cache, or an external HTTP API.
+E.g. service needs a persistent store, or an external HTTP API.
 
 1. **Define the port** — in `ports.go`, named after the **capability**, not the provider:
    ```go
-   // GOOD
-   type OrderCache interface {
-       Get(ctx context.Context, id shared.OrderID) (*Order, error)
-       Set(ctx context.Context, o *Order) error
+   // GOOD — internal/kb/ports.go
+   type VectorStore interface {
+       Load(ctx context.Context) (string, map[string][]float32, error)
+       Save(ctx context.Context, identity string, vectors map[string][]float32) error
    }
    ```
-   Not `RedisClient` — that names the provider.
+   Name it for what it does, not for the storage or client behind it.
 2. **Inject** — add a field to the service struct, accept it in `NewService(...)`.
-3. **Implement adapter** — new file (e.g. `cache_redis.go`) implementing the port. Marshal via `dto_internal.go`. Apply `context.WithTimeout` per R3.2.
+3. **Implement adapter** — new file (e.g. `repo_vector.go`) implementing the port. Marshal via `dto_internal.go`. Apply `context.WithTimeout` per R3.2.
 4. **Wire** — construct and pass in `internal/bootstrap/` (see `NewKBService` in `kb.go`).
 5. **Tests** — update `service_test.go` with a hand-written fake for the new port.
 
 ## Add a cross-feature dependency
 
-E.g. `order` needs to call `payment`. **Do not import the other feature.**
+E.g. `gateway` needs `auth` to resolve bearer tokens. **Do not import the other feature.**
 
 1. **Define capability port in your own `ports.go`:**
    ```go
-   // internal/order/ports.go
-   type PaymentCharger interface {
-       Charge(ctx context.Context, userID shared.UserID, amount shared.Money) error
+   // internal/gateway/ports.go
+   type TokenResolver interface {
+       Resolve(ctx context.Context, token string) (shared.Principal, error)
+       Lookup(id string) (shared.Principal, bool)
    }
    ```
-2. **Verify duck-typing** — check that `payment.Service`'s existing method signature matches. If not, either:
+2. **Verify duck-typing** — check that the provider's existing method signatures match (`auth.Store` satisfies `TokenResolver`). If not, either:
    - Adjust your port to match (preferred — your feature is the consumer)
    - Write a thin adapter struct in `internal/bootstrap/`
-3. **Inject in `internal/bootstrap/`:**
+3. **Inject at the composition root** (`internal/bootstrap/` or `cmd/<binary>/main.go`):
    ```go
-   orderSvc := order.NewService(orderRepo, paymentSvc, ...)
+   // cmd/gateway/main.go
+   h := gateway.NewHandler(..., limiter, authStore, ...)
    ```
 4. **Test** — fake the new port in `service_test.go`. The test never imports the other feature.
 

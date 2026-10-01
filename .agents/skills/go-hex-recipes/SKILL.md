@@ -12,8 +12,7 @@ description: Recipes for common modifications to an existing feature in this hex
 3. **Route** — register in `routes.go`.
 4. **Service** — if it's new business behavior, add a method on `service.go`. If it just exposes an existing operation, no service change needed.
 5. **Port + adapter** — only if the endpoint needs I/O the service can't already do. Add to `ports.go` and implement in the relevant `repo_*.go` / `cache_*.go`.
-6. **OpenAPI** — declare the endpoint in `api/openapi.yaml`.
-7. **Tests** — extend `service_test.go` and `handler_http_test.go` (table-driven, mocked).
+6. **Tests** — extend `service_test.go` and `handler_http_test.go` (table-driven, fakes).
 
 ## Add a new outbound dependency to a service
 
@@ -30,9 +29,8 @@ E.g. service needs Redis cache, or an external HTTP API.
    Not `RedisClient` — that names the provider.
 2. **Inject** — add a field to the service struct, accept it in `NewService(...)`.
 3. **Implement adapter** — new file (e.g. `cache_redis.go`) implementing the port. Marshal via `dto_internal.go`. Apply `context.WithTimeout` per R3.2.
-4. **Wire** — construct and pass in `internal/bootstrap/wire.go`.
-5. **Mocks** — `make mock-gen` to regenerate.
-6. **Tests** — update `service_test.go` to mock the new port.
+4. **Wire** — construct and pass in `internal/bootstrap/` (see `NewKBService` in `kb.go`).
+5. **Tests** — update `service_test.go` with a hand-written fake for the new port.
 
 ## Add a cross-feature dependency
 
@@ -47,22 +45,21 @@ E.g. `order` needs to call `payment`. **Do not import the other feature.**
    ```
 2. **Verify duck-typing** — check that `payment.Service`'s existing method signature matches. If not, either:
    - Adjust your port to match (preferred — your feature is the consumer)
-   - Write a thin adapter struct in `bootstrap/wire.go` (see `userLookupAdapter` for reference)
-3. **Inject in `wire.go`:**
+   - Write a thin adapter struct in `internal/bootstrap/`
+3. **Inject in `internal/bootstrap/`:**
    ```go
    orderSvc := order.NewService(orderRepo, paymentSvc, ...)
    ```
-4. **Test** — mock the new port in `service_test.go`. The test never imports the other feature.
+4. **Test** — fake the new port in `service_test.go`. The test never imports the other feature.
 
 `make lint` will reject any `import "internal/<otherFeature>"` — that's the rule working as intended.
 
 ## Add a new domain field
 
 1. **Domain** — add the field to the struct in `domain.go`. If it has invariants, validate in `New<Entity>(...)`.
-2. **Persistence** — add column to migration (`migrations/NNNN_alter_<feature>_add_<field>.up.sql` + `.down.sql`). Update sqlc query in `sql/queries/<feature>.sql` using `sqlc.arg(<column_name>)` (not positional `$N` — see `sql/queries/order.sql` for the pattern). Run `make sqlc-generate`.
+2. **Persistence** — update the repo/adapter mapping in `dto_internal.go` if the field is stored.
 3. **DTO** — add to relevant DTOs in `dto_http.go` and `dto_internal.go`. Update mappers.
-4. **OpenAPI** — update schema in `api/openapi.yaml`.
-5. **Tests** — extend table cases.
+4. **Tests** — extend table cases.
 
 ## Change a domain rule
 
@@ -77,8 +74,5 @@ Add a test case to `service_test.go` (or domain-level test if the rule is pure).
 
 ```bash
 make lint    # depguard + static checks
-make test    # unit tests with mocks
-make integration   # repo tests with testcontainers (slower)
+make test    # unit tests with fakes
 ```
-
-If you touched SQL: `make sqlc-generate` before `make test`. If you touched ports: `make mock-gen`.

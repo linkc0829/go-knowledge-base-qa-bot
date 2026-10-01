@@ -76,15 +76,11 @@ If you genuinely think a convention is harmful, surface it. Don't fork silently.
 Default to surfacing uncertainty, not hiding it.
 
 
-## R0. Template Usage (read before the first modification)
-
-This repo is a starting-point template, not a long-lived application. Before the project has shipped its first version, apply these rules:
+## R0. Local setup
 
 | ID | Rule |
 |----|------|
-| R0.1 | **Edit migration `0001` in place.** When the user is shaping the initial schema for their project, modify `migrations/0001_*.up.sql` / `*.down.sql` directly — do NOT create `0002+` to alter the template's tables. Only start stacking new migrations after the first real deploy (ask the user if unclear which mode they are in). |
-| R0.2 | **Do not auto-create `.env`.** `.env` is gitignored. Tell the user to `cp .env.example .env` and set `JWT_SECRET`; do not write a `.env` file on their behalf unless explicitly asked. |
-| R0.3 | **Delete unused template features.** The shipped `user` / `order` / `payment` slices are demos. If the user's project does not need one (e.g. no payments), fully remove it — do not leave it as dead code. For removing `payment`, the touchpoints are: `internal/payment/`, the `payment` block in `internal/bootstrap/wire.go`, the `PaymentCharger` injection in `internal/order/`, `sql/queries/payment.sql`, the payment tables in migration `0001`, payment paths in `api/openapi.yaml`, the `no-cross-feature-payment` depguard block in `.golangci.yml`, and any `PAYMENT_*` entries in `.env.example`. Apply the same pattern for any other slice. Run `make lint && make test` after each removal to catch dangling references. |
+| R0.1 | **Do not auto-create `.env`.** `.env` is gitignored. Tell the user to `cp .env.example .env` and set `KB_AUTH_FILE` (or `KB_AUTH_DISABLED=true` for local-only runs); do not write a `.env` file on their behalf unless explicitly asked. |
 
 ## Architecture
 
@@ -94,12 +90,12 @@ This repo is a starting-point template, not a long-lived application. Before the
 - Inside the package: domain, service, ports, and adapters live side-by-side as separate files. Go's package boundary enforces the hexagon's edge.
 - `internal/shared/` — zero-dependency value objects shared by features.
 - `internal/platform/` — infrastructure utilities (DB pool, logger, etc.).
-- `internal/bootstrap/` — composition root; the only place features get wired together.
+- `internal/bootstrap/` — composition root (`services.go`, `kb.go`); the only place features get wired together.
 
 ### Request flow
 
 ```
-HTTP Request → handler_http.go → service.go → ports.go → repo_postgres.go → PostgreSQL
+HTTP Request → handler_http.go → service.go → ports.go → adapters (repo_markdown.go, repo_vector.go, adapter_openai.go)
 ```
 
 ### Cross-feature communication
@@ -114,7 +110,7 @@ Feature A may need a capability from Feature B. **A must NOT import B directly.*
    }
    ```
 2. B's service structurally satisfies that interface (Go duck typing).
-3. `internal/bootstrap/wire.go` injects B's service as A's port.
+3. `internal/bootstrap/` injects B's service as A's port.
 
 ---
 
@@ -142,10 +138,9 @@ Feature A may need a capability from Feature B. **A must NOT import B directly.*
 | `dto_internal.go` | Persistence rows, cache values, cross-feature DTOs. | HTTP-only concerns |
 | `handler_http.go` | Parse → validate → call service → map → respond. Maps domain errors to HTTP via `errors.Is`. | Business logic, direct adapter access |
 | `routes.go` | `RegisterRoutes(rg *gin.RouterGroup, h *Handler)`. | Handler implementation |
-| `repo_postgres.go` | Implements repo port. Maps domain ↔ sqlc rows. | Business logic |
-| `cache_redis.go` | Implements cache port. Marshals via `dto_internal.go`. | Business logic |
-| `service_test.go` | Unit-tests service with mocked ports. | Real DB / Redis |
-| `handler_http_test.go` | `httptest` + mocked service. | Real DB / Redis |
+| `repo_*.go` / `adapter_*.go` | Implements an outbound port (storage, vector index, LLM). Maps domain ↔ wire/storage shapes via `dto_internal.go`. | Business logic |
+| `service_test.go` | Unit-tests service with fake ports. | Real network / LLM calls |
+| `handler_http_test.go` | `httptest` + fake service. | Real network / LLM calls |
 
 ---
 
@@ -157,7 +152,6 @@ Feature A may need a capability from Feature B. **A must NOT import B directly.*
 | R3.2 | All external calls (DB, Redis, HTTP, Kafka) have a timeout via `context.WithTimeout`. |
 | R3.3 | Wrap errors with context: `fmt.Errorf("save order: %w", err)`. Never `errors.New(err.Error())`. |
 | R3.4 | Service constructors accept interfaces only — never `*pgxpool.Pool`, `*redis.Client`, `*gin.Engine`. |
-| R3.5 | All SQL goes through sqlc. Hand-written `db.Query` is forbidden outside `internal/platform/`. |
 | R3.6 | Use `internal/platform/logger`. `fmt.Println` / `log.Printf` forbidden in production code. |
 | R3.7 | Domain entities expose `New<Entity>(...)` constructors that validate invariants. Zero-value invalid state is forbidden. |
 
@@ -167,16 +161,15 @@ Feature A may need a capability from Feature B. **A must NOT import B directly.*
 
 | ID | Rule |
 |----|------|
-| R5.1 | Service tests use `gomock` to mock all ports. Cover happy, validation, port-error, and edge cases. Target ≥ 80%. |
-| R5.2 | Handler tests use `httptest` + mocked service interface. Verify status, response shape, validation. |
-| R5.3 | Repo tests are integration tests in `test/integration/` against a locally running Postgres (DSN via `POSTGRES_TEST_DSN`). Build tag: `//go:build integration`. |
+| R5.1 | Service tests replace every port with a hand-written fake (see `internal/kb/fake_llm.go`). Cover happy, validation, port-error, and edge cases. Target ≥ 80%. |
+| R5.2 | Handler tests use `httptest` + a fake service. Verify status, response shape, validation. |
 | R5.4 | Table-driven by default. Case names use `snake_case`. |
 
 ---
 
 ## Adding a new feature
 
-Invoke the `new-feature` skill — it has the full checklist, scaffolding steps, and wiring/openapi edits. Depguard rules for `domain.go` / `service.go` / `handler_*.go` are glob-based and auto-cover new features, but **cross-feature isolation** (`no-cross-feature-<name>`) requires one explicit block per feature in `.golangci.yml`, alongside the `bootstrap/wire.go` and `api/openapi.yaml` edits.
+Invoke the `new-feature` skill — it has the full checklist, scaffolding steps, and wiring edits. Depguard rules for `domain.go` / `service.go` / `handler_*.go` are glob-based and auto-cover new features, but **cross-feature isolation** (`no-cross-feature-<name>`) requires one explicit block per feature in `.golangci.yml`, alongside the `internal/bootstrap/` wiring.
 
 ## Reviewing or refactoring existing code
 

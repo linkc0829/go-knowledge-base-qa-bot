@@ -43,10 +43,8 @@ Use me for: classification, drafting, summarization, extraction.
 Do NOT use me for: routing, retries, deterministic transforms.
 If code can answer, code answers.
 
-### Rule 6 — Token budgets are not advisory
-Per-task: 4,000 tokens. Per-session: 30,000 tokens.
-If approaching budget, summarize and start fresh.
-Surface the breach. Do not silently overrun.
+### Rule 6 — Keep scope visible
+When a task grows well beyond what was asked, say so and confirm before continuing.
 
 ### Rule 7 — Surface conflicts, don't average them
 If two patterns contradict, pick one (more recent / more tested).
@@ -61,9 +59,8 @@ Before adding code, read exports, immediate callers, shared utilities.
 Tests must encode WHY behavior matters, not just WHAT it does.
 A test that can't fail when business logic changes is wrong.
 
-### Rule 10 — Checkpoint after every significant step
-Summarize what was done, what's verified, what's left.
-Don't continue from a state you can't describe back.
+### Rule 10 — Know where you are
+Don't continue from a state you can't describe back (what's done, verified, left).
 If you lose track, stop and restate.
 
 ### Rule 11 — Match the codebase's conventions, even if you disagree

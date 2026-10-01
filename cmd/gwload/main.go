@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -556,26 +557,21 @@ func (r *runner) restartResets() check {
 // logConsistency: A3 bills from gateway_usage and A2 counts 429s from it, so
 // every outcome a client saw must be there, and nothing extra.
 func (r *runner) logConsistency(path string) check {
-	f, err := os.Open(path)
-	if err != nil {
-		return check{Name: "log_consistency", Detail: err.Error()}
-	}
-	defer f.Close()
-	counts := map[int]int{}
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
-	for sc.Scan() {
-		var line struct {
-			Msg    string `json:"msg"`
-			Status int    `json:"status"`
-		}
-		if json.Unmarshal(sc.Bytes(), &line) == nil && line.Msg == "gateway_usage" {
-			counts[line.Status]++
-		}
-	}
 	r.mu.Lock()
 	want := map[int]int{200: r.completed, 429: r.rejected, 504: r.timeouts, 499: r.canceled}
 	r.mu.Unlock()
+	// The gateway writes gateway_usage after the response ends, so the last
+	// request's line can land just after the client is done (CI saw 11/12).
+	var counts map[int]int
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		var err error
+		if counts, err = usageCounts(path); err != nil {
+			return check{Name: "log_consistency", Detail: err.Error()}
+		}
+		if maps.Equal(counts, want) || time.Now().After(deadline) {
+			break
+		}
+	}
 	pass := true
 	var parts []string
 	for _, s := range []int{200, 429, 499, 504} {
@@ -588,4 +584,25 @@ func (r *runner) logConsistency(path string) check {
 		Detail: strings.Join(parts, ", "),
 		Data:   map[string]any{"log": counts, "client": want},
 	}
+}
+
+func usageCounts(path string) (map[int]int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	counts := map[int]int{200: 0, 429: 0, 499: 0, 504: 0}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		var line struct {
+			Msg    string `json:"msg"`
+			Status int    `json:"status"`
+		}
+		if json.Unmarshal(sc.Bytes(), &line) == nil && line.Msg == "gateway_usage" {
+			counts[line.Status]++
+		}
+	}
+	return counts, sc.Err()
 }

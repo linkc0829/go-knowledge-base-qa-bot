@@ -72,10 +72,18 @@ services:
       KB_EMBED_MODEL: ${KB_EMBED_MODEL:-gemini-embedding-2}
       # Sends X-On-Behalf-Of so gateway_usage is per asking user, not all "kb".
       KB_LLM_FORWARD_USER: "true"
+      # high for K2: without thinking it answers with broken tool calls.
+      KB_CHAT_REASONING_EFFORT: ${KB_CHAT_REASONING_EFFORT:-}
+      # Thinking tokens count against this. 1024 fits Gemma; with reasoning
+      # high set 4096 (K2 used up to ~2,400 in the 606-question eval).
+      KB_CHAT_MAX_TOKENS: ${KB_CHAT_MAX_TOKENS:-1024}
       # One /chat, retrieval plus the model answer. Raise for reasoning models.
       KB_CHAT_TIMEOUT: ${KB_CHAT_TIMEOUT:-30s}
       KB_DOCS_DIR: docs
       KB_INDEX_DIR: .kb
+      # A full rebuild (POST /index) embeds ~3,000 sections and takes ~2 min;
+      # the 60s default times out. The server write timeout scales with it.
+      KB_INDEX_TIMEOUT: ${KB_INDEX_TIMEOUT:-10m}
     volumes:
       - ${DATA_DIR:-/srv/ai/platform/data}/auth:/app/auth
       - ${DATA_DIR:-/srv/ai/platform/data}/docs:/app/docs:ro

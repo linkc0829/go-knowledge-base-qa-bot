@@ -74,8 +74,8 @@ services:
       KB_LLM_FORWARD_USER: "true"
       # high for K2: without thinking it answers with broken tool calls.
       KB_CHAT_REASONING_EFFORT: ${KB_CHAT_REASONING_EFFORT:-}
-      # Thinking tokens count against this; K2 high used up to ~2,400 in the
-      # 606-question eval, so the 1024 default would cut answers off.
+      # Thinking tokens count against this. 1024 fits Gemma; with reasoning
+      # high set 4096 (K2 used up to ~2,400 in the 606-question eval).
       KB_CHAT_MAX_TOKENS: ${KB_CHAT_MAX_TOKENS:-1024}
       # One /chat, retrieval plus the model answer. Raise for reasoning models.
       KB_CHAT_TIMEOUT: ${KB_CHAT_TIMEOUT:-30s}

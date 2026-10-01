@@ -86,7 +86,7 @@ Default to surfacing uncertainty, not hiding it.
 - Each feature is a single Go package under `internal/<feature>/`.
 - Inside the package: domain, service, ports, and adapters live side-by-side as separate files. Go's package boundary enforces the hexagon's edge.
 - `internal/shared/` — zero-dependency value objects shared by features.
-- `internal/platform/` — infrastructure utilities (DB pool, logger, etc.).
+- `internal/platform/` — infrastructure utilities (config, logger, HTTP server, file locking, etc.).
 - `internal/bootstrap/` — composition root (`services.go`, `kb.go`); the only place features get wired together.
 
 ### Request flow

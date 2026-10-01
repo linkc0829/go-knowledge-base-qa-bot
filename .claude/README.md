@@ -12,6 +12,9 @@ Repo-level configuration for Claude Code.
   - `ui-kb-validate/` — static checks plus a live `/chat` run of the operational eval
   - `ui-kb-eng-validate/` — drives the MCP stdio server with the engineering eval,
     the path a coding agent actually takes
+  - `ui-kb-merge-import/` — merges per-source KB bundles, distils, and imports the corpus
+  - `ui-kb-reference-bundle/` — turns hand-written markdown into a `reference` bundle
+  - `ui-kb-requirement-validate/` — requirement-acceptance questions against live `/chat`
 
 `settings.local.json` is per-machine and stays out of version control.
 

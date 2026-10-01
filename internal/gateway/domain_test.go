@@ -135,6 +135,10 @@ func TestCapOutputTokens(t *testing.T) {
 	}{
 		{name: "over_limit_clamped", body: `{"max_tokens":5000}`, limit: limit, wantChanged: true, want: map[string]string{"max_tokens": "100"}},
 		{name: "one_over_limit_clamped", body: `{"max_tokens":101}`, limit: limit, wantChanged: true, want: map[string]string{"max_tokens": "100"}},
+		// Float and exponent forms fail Int64 but upstreams accept them.
+		{name: "float_over_limit_clamped", body: `{"max_tokens":5000.0}`, limit: limit, wantChanged: true, want: map[string]string{"max_tokens": "100"}},
+		{name: "exponent_over_limit_clamped", body: `{"max_tokens":1e9}`, limit: limit, wantChanged: true, want: map[string]string{"max_tokens": "100"}},
+		{name: "float_under_limit_kept", body: `{"max_tokens":20.0}`, limit: limit, want: map[string]string{"max_tokens": "20.0"}},
 		{name: "at_limit_kept", body: `{"max_tokens":100}`, limit: limit, want: map[string]string{"max_tokens": "100"}},
 		{name: "under_limit_kept", body: `{"max_tokens":20}`, limit: limit, want: map[string]string{"max_tokens": "20"}},
 		{name: "max_completion_tokens_clamped", body: `{"max_completion_tokens":5000}`, limit: limit, fillMissing: true, wantChanged: true,

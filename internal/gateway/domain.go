@@ -81,7 +81,7 @@ func (l *Limiter) Snapshot() (global int, users map[string]int) {
 // request body to limit, so one runaway generation (a reasoning model that
 // never stops thinking) cannot hold a backend slot for minutes. With
 // fillMissing, a body that sets neither gets max_tokens = limit. Values that
-// are not integers are left for the upstream to reject. limit <= 0 disables
+// are not numbers are left for the upstream to reject. limit <= 0 disables
 // the cap. It reports whether payload changed.
 func capOutputTokens(payload map[string]any, limit int64, fillMissing bool) bool {
 	if limit <= 0 {
@@ -98,7 +98,15 @@ func capOutputTokens(payload map[string]any, limit int64, fillMissing bool) bool
 		if !ok {
 			continue
 		}
-		if i, err := n.Int64(); err == nil && i > limit {
+		// 1e9 and 100000.0 fail Int64 but upstreams accept them as integers,
+		// so fall back to Float64 or they would bypass the cap.
+		over := false
+		if i, err := n.Int64(); err == nil {
+			over = i > limit
+		} else if f, err := n.Float64(); err == nil {
+			over = f > float64(limit)
+		}
+		if over {
 			payload[key] = limit
 			changed = true
 		}

@@ -12,6 +12,16 @@ served_model_name: gemma-4-26b-a4b
 # 5.2 concurrent full-length requests at gpu_memory_utilization 0.90.
 vllm_max_model_len: 98304
 kb_embed_model: gemini-embedding-2
+# Requests the model runs at once (vLLM --max-num-seqs). The gateway's global
+# in-flight cap is the same number, so overload is a 429 at the gateway instead
+# of a queue inside vLLM. Embeddings count against it too; they take ~100ms.
+inference_max_seqs: 4
+# Below the global cap, so one person cannot take every slot.
+gateway_max_inflight_per_user: 2
+# Output cap per chat/completion request. A reasoning model stuck thinking
+# stops here (~3 min at K2's 90 tok/s) instead of holding a slot; VS Code's
+# 16000 maxOutputTokens still fits.
+gateway_max_output_tokens: 16384
 # /chat timeout (retrieval + answer). Raise for a reasoning model.
 kb_chat_timeout: 30s
 

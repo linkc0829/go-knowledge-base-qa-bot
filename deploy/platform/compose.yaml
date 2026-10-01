@@ -28,8 +28,11 @@ services:
       GATEWAY_EMBED_UPSTREAM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
       GATEWAY_EMBED_UPSTREAM_API_KEY: ${GEMINI_API_KEY:?embeddings upstream key}
       GATEWAY_EMBED_MODEL: ${KB_EMBED_MODEL:-gemini-embedding-2}
-      GATEWAY_MAX_INFLIGHT: ${GATEWAY_MAX_INFLIGHT:-64}
-      GATEWAY_MAX_INFLIGHT_PER_USER: ${GATEWAY_MAX_INFLIGHT_PER_USER:-4}
+      # Same as VLLM_MAX_NUM_SEQS in the inference .env: over it is a 429 here,
+      # not a queue inside vLLM.
+      GATEWAY_MAX_INFLIGHT: ${GATEWAY_MAX_INFLIGHT:-4}
+      GATEWAY_MAX_INFLIGHT_PER_USER: ${GATEWAY_MAX_INFLIGHT_PER_USER:-2}
+      GATEWAY_MAX_OUTPUT_TOKENS: ${GATEWAY_MAX_OUTPUT_TOKENS:-16384}
     volumes:
       # A directory, not the file: kb replaces auth.json by rename, which
       # fails on a single-file bind mount; the gateway re-reads it on change.

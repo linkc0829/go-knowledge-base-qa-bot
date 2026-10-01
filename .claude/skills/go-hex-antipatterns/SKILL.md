@@ -33,21 +33,21 @@ result, err := h.svc.PlaceOrder(ctx, req.toInput())
 
 ```go
 // BAD
-func NewService(db *pgxpool.Pool, rdb *redis.Client) *Service
+func NewService(llm *openai.Client) *Service
 
 // GOOD — accept interfaces, R3.4
-func NewService(repo OrderRepo, cache OrderCache) *Service
+func NewService(llm LLM) *Service
 ```
 
 ## 4. Cross-feature import
 
 ```go
-// BAD — order package imports payment package
-import "github.com/linkc0829/llm-platform/internal/payment"
+// BAD — kb package imports auth package
+import "github.com/linkc0829/llm-platform/internal/auth"
 
-// GOOD — order defines a capability port; bootstrap wires payment.Service into it
-// internal/order/ports.go
-type PaymentCharger interface { ... }
+// GOOD — kb defines a capability port in its own ports.go; bootstrap wires auth into it
+// internal/kb/ports.go
+type <Capability> interface { ... }
 ```
 
 This is enforced by depguard (R1.4) — it will fail `make lint`. If you see it pass lint, the rule glob is wrong.
@@ -55,7 +55,7 @@ This is enforced by depguard (R1.4) — it will fail `make lint`. If you see it 
 ## 5. Business logic in repo
 
 ```go
-// BAD — in repo_postgres.go
+// BAD — in a repo_*.go adapter
 if order.Amount.IsZero() {
     return ErrInvalidOrder
 }
@@ -109,17 +109,7 @@ fmt.Println("user created:", user.ID)
 logger.Info(ctx, "user created", "user_id", user.ID)
 ```
 
-## 10. Hand-written SQL outside platform layer
-
-```go
-// BAD — repo_postgres.go writing raw SQL strings
-rows, err := r.db.Query(ctx, "SELECT id, name FROM users WHERE ...")
-
-// GOOD — define in sql/queries/<feature>.sql, regenerate sqlc, call typed query
-user, err := r.q.GetUserByID(ctx, id)
-```
-
-## 11. Zero-value invalid domain construction
+## 10. Zero-value invalid domain construction
 
 ```go
 // BAD
@@ -131,7 +121,7 @@ order, err := domain.NewOrder(userID, amount)
 if err != nil { return err }
 ```
 
-## 12. Mapping domain errors → HTTP status in service or repo
+## 11. Mapping domain errors → HTTP status in service or repo
 
 The repo returns domain errors; the **handler** maps to HTTP status via `errors.Is`:
 
@@ -150,7 +140,7 @@ case err != nil:
 
 When given a diff, scan in this order:
 1. Any new import of `internal/<otherFeature>`? → R1.4 violation.
-2. Any `*pgxpool.Pool` / `*redis.Client` / `*gin.Engine` in a service signature? → R3.4 violation.
+2. Any concrete client (`*openai.Client`, `*gin.Engine`) in a service signature? → R3.4 violation.
 3. Any `if`/`switch` on business state inside a `handler_*.go`? → move to service/domain.
 4. Any `fmt.Errorf("...: %s", err.Error())` or `errors.New(err.Error())`? → use `%w`.
 5. Any direct `c.JSON(..., domainEntity)`? → add mapper in `dto_http.go`.

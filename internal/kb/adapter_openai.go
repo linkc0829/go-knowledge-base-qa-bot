@@ -253,6 +253,13 @@ func (o *OpenAIClient) Answer(ctx context.Context, query string, sections []Sect
 		return Completion{}, fmt.Errorf("openai chat: no choices returned")
 	}
 	out.Text = strings.TrimSpace(text.String())
+	// A reasoning model that spends max_tokens thinking streams no content. Passed
+	// on, the empty text reads as a grounded answer with sources; a retry usually
+	// finishes, so report it as transient instead.
+	if out.Text == "" {
+		return Completion{}, NewLLMTransientError(ErrLLMUnavailable, "",
+			fmt.Errorf("openai chat: empty answer after %d completion tokens", out.CompletionTokens))
+	}
 	return out, nil
 }
 

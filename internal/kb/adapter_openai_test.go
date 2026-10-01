@@ -315,6 +315,25 @@ func TestAnswerReportsServedModelUsageAndTTFT(t *testing.T) {
 	}
 }
 
+// K2 at reasoning_effort=high can think until max_tokens and stream no content.
+// That must not reach the service as text: an empty answer there is reported
+// grounded=true with sources, a blank "success" instead of a retryable 503.
+func TestAnswerEmptyContentIsTransient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, `data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":"length"}]}`+"\n\n")
+		_, _ = io.WriteString(w, `data: {"id":"c","model":"m","choices":[],"usage":{"prompt_tokens":120,"completion_tokens":4096,"total_tokens":4216}}`+"\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewOpenAIClient("key", server.URL+"/v1", "chat", "embed", ChatOptions{})
+	_, err := client.Answer(context.Background(), "question", nil, nil)
+	if !errors.Is(err, ErrLLMUnavailable) {
+		t.Fatalf("Answer() error = %v, want ErrLLMUnavailable", err)
+	}
+}
+
 // Streaming must not hide an upstream 429: the handler maps ErrLLMRateLimited to
 // a 429 with the upstream's Retry-After, which the eval harness waits on.
 func TestAnswerStreamingKeepsRateLimitClassification(t *testing.T) {

@@ -30,7 +30,7 @@ kb_chat_timeout: 30s
 inference_model: gemma
 k2_image: local/llama-k2:42adf01
 k2_gguf: K2-Horizon-MoVA-36B-A4B-Q6_K.gguf
-k2_ctx: 163840
+k2_ctx: 98304   # same per-request limit as vllm_max_model_len
 k2_served_model_name: k2-horizon
 # Same for both models so the comparison is fair. Longest real K2 answer is 2387
 # tokens; a K2 stuck thinking now stops at ~45s (90 tok/s) instead of 90s.

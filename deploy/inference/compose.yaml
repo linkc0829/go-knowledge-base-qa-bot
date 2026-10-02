@@ -79,7 +79,7 @@ services:
       - -ngl
       - "99"
       - -c
-      - "${K2_CTX:-163840}"   # KV shared by 4 slots: a total, not per request
+      - "${K2_CTX:-98304}"   # unified KV: one pool for 4 slots; one request may use all of it
       - -ctk
       - q8_0
       - -ctv

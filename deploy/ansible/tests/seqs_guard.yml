@@ -10,6 +10,8 @@
   vars:
     guard: "{{ playbook_dir }}/../roles/stack/tasks/seqs_guard.yml"
     inference_max_seqs: 4
+    inference_model: gemma
+    vault_vllm_api_key: test-key
     vllm_labels: >-
       --label com.docker.compose.project=inference
       --label com.docker.compose.service=vllm
@@ -60,9 +62,42 @@
             - name: Record that it stopped
               ansible.builtin.set_fact:
                 seqs_guard_stopped_changed: true
+        # EXPERIMENT (exp/k2-ansible): K2 has no --max-num-seqs; the guard
+        # reads total_slots from llama-server's /props instead.
+        - name: Start a stand-in K2 whose /props reports 4 slots
+          ansible.builtin.command: >-
+            docker run -d --name seqs-k2 -p 127.0.0.1:8000:8000 busybox
+            sh -c 'mkdir -p /www && echo "{\"total_slots\":4}" > /www/props
+            && httpd -f -p 8000 -h /www'
+          changed_when: true
+        - name: Wait for it
+          ansible.builtin.wait_for:
+            host: 127.0.0.1
+            port: 8000
+            timeout: 30
+
+        - name: K2 with matching slots passes
+          ansible.builtin.include_tasks: "{{ guard }}"
+          vars:
+            inference_model: k2
+
+        - name: K2 with a changed value stops the play
+          block:
+            - name: Run the guard for K2 with inference_max_seqs 8
+              ansible.builtin.include_tasks: "{{ guard }}"
+              vars:
+                inference_model: k2
+                inference_max_seqs: 8
+            - name: Record that it passed
+              ansible.builtin.set_fact:
+                seqs_guard_stopped_k2: false
+          rescue:
+            - name: Record that it stopped
+              ansible.builtin.set_fact:
+                seqs_guard_stopped_k2: true
       always:
         - name: Remove the stand-ins
-          ansible.builtin.command: docker rm -f seqs-vllm seqs-gateway
+          ansible.builtin.command: docker rm -f seqs-vllm seqs-gateway seqs-k2
           changed_when: true
           failed_when: false
 
@@ -71,4 +106,5 @@
         that:
           - seqs_guard_stopped_unknown
           - seqs_guard_stopped_changed
+          - seqs_guard_stopped_k2
         fail_msg: the guard let a partial deploy through without a confirmed match

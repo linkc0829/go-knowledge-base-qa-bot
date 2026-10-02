@@ -30,14 +30,31 @@
   check_mode: false
   no_log: true   # the gateway's environment holds upstream keys
 
+# EXPERIMENT (exp/k2-ansible): K2 runs in llama.cpp, which has no
+# --max-num-seqs flag. Its slot count comes from the running server instead.
+# Unreachable or unreadable also fails closed.
+- name: Ask the running K2 how many slots it serves
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8000/props
+    headers:
+      Authorization: "Bearer {{ vault_vllm_api_key }}"
+    return_content: true
+    timeout: 5
+  register: stack_k2_props
+  failed_when: false
+  check_mode: false
+  no_log: true   # the request carries the vLLM key
+  when: inference_model == 'k2'
+
 - name: Stop a partial deploy that would change inference_max_seqs
   ansible.builtin.assert:
     that:
-      - stack_running_vllm_seqs | string == inference_max_seqs | string
+      - stack_running_backend_seqs | string == inference_max_seqs | string
       - stack_running_gateway_cap | string == inference_max_seqs | string
     fail_msg: >-
-      inference_max_seqs is {{ inference_max_seqs }}, but the running vLLM uses
-      --max-num-seqs={{ stack_running_vllm_seqs or 'unknown' }} and the gateway
+      inference_max_seqs is {{ inference_max_seqs }}, but the running
+      {{ inference_model }} serves {{ stack_running_backend_seqs or 'unknown' }}
+      sequences at once and the gateway
       GATEWAY_MAX_INFLIGHT={{ stack_running_gateway_cap or 'unknown' }}. Both
       must match before a partial deploy; use -e only=all.
     quiet: true
@@ -49,6 +66,10 @@
     stack_running_vllm_seqs: >-
       {{ stack_vllm_cmd[stack_vllm_cmd.index('--max-num-seqs') + 1]
       if '--max-num-seqs' in stack_vllm_cmd else '' }}
+    stack_running_backend_seqs: >-
+      {{ ((stack_k2_props.content | default('{}') | from_json).total_slots | default(''))
+      if inference_model == 'k2' and stack_k2_props.status | default(0) == 200
+      else ('' if inference_model == 'k2' else stack_running_vllm_seqs) }}
     stack_running_gateway_cap: >-
       {{ stack_gateway_env | select('match', '^GATEWAY_MAX_INFLIGHT=')
       | map('regex_replace', '^GATEWAY_MAX_INFLIGHT=', '') | first | default('') }}

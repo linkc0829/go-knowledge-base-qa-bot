@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -142,8 +143,9 @@ func metricsFrom(c *gin.Context) *requestMetrics {
 }
 
 // prepareChat forces stream_options.include_usage on stream requests so
-// usage can be logged, and caps the requested output length. An unparseable
-// body is forwarded unchanged: the upstream owns chat request validation.
+// usage can be logged, caps the requested output length, and rejects requests
+// for more than one sequence. An unparseable body is forwarded unchanged: the
+// upstream owns chat request validation.
 func (h *Handler) prepareChat(c *gin.Context) {
 	metrics := metricsFrom(c)
 	body, ok := readBody(c, metrics)
@@ -168,7 +170,21 @@ func (h *Handler) prepareChat(c *gin.Context) {
 		// Only chat gets a missing limit filled in: /v1/completions already
 		// defaults to 16 tokens, and filling it would raise that to the cap.
 		isChat := strings.HasSuffix(c.FullPath(), "/chat/completions")
-		if capOutputTokens(payload, int64(h.maxOutputTokens), isChat) {
+		capped, err := capOutputTokens(payload, int64(h.maxOutputTokens), isChat)
+		if err == nil {
+			err = checkSingleSequence(payload)
+		}
+		if err != nil {
+			code := "invalid_max_tokens"
+			if errors.Is(err, ErrMultipleSequences) {
+				code = "multiple_sequences_not_supported"
+			}
+			metrics.setError(code)
+			metrics.setStatusCode(http.StatusBadRequest)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": code})
+			return
+		}
+		if capped {
 			changed = true
 		}
 		if changed {

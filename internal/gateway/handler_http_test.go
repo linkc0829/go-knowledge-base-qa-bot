@@ -1375,6 +1375,7 @@ func TestHandler_OutputTokensCapped(t *testing.T) {
 		{name: "chat_stream_over_cap", path: "/v1/chat/completions", body: `{"model":"m","stream":true,"max_tokens":16000}`, want: float64(1000)},
 		{name: "completions_over_cap", path: "/v1/completions", body: `{"model":"m","max_tokens":16000}`, want: float64(1000)},
 		{name: "completions_missing_kept", path: "/v1/completions", body: `{"model":"m"}`, want: nil},
+		{name: "chat_numeric_string_over_cap", path: "/v1/chat/completions", body: `{"model":"m","max_tokens":"90000"}`, want: float64(1000)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1387,6 +1388,57 @@ func TestHandler_OutputTokensCapped(t *testing.T) {
 			}
 			if got := received["max_tokens"]; got != tt.want {
 				t.Errorf("upstream max_tokens = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// Requests the gateway cannot bound must stop here with 400, never reach the
+// upstream: an unreadable output limit, or a fan-out to several sequences.
+func TestHandler_UnboundedRequestsRejected(t *testing.T) {
+	resolver := &mockResolver{principals: map[string]shared.Principal{"tok": {ID: "u1"}}}
+	var upstreamHits atomic.Int32
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamHits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[]}`))
+	})
+	gin.SetMode(gin.TestMode)
+	srv := httptest.NewServer(upstream)
+	t.Cleanup(srv.Close)
+	uURL, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse upstream url: %v", err)
+	}
+	h := NewHandler(uURL, "key", nil, "", "", NewLimiter(10, 5), resolver, 0, 1000, zap.NewNop())
+	engine := gin.New()
+	RegisterRoutes(engine.Group(""), h)
+
+	tests := []struct {
+		name string
+		path string
+		body string
+		code string
+	}{
+		{name: "non_numeric_max_tokens", path: "/v1/chat/completions", body: `{"model":"m","max_tokens":"lots"}`, code: "invalid_max_tokens"},
+		{name: "chat_n_five", path: "/v1/chat/completions", body: `{"model":"m","n":5}`, code: "multiple_sequences_not_supported"},
+		{name: "completions_prompt_list", path: "/v1/completions", body: `{"model":"m","prompt":["a","b"]}`, code: "multiple_sequences_not_supported"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := upstreamHits.Load()
+			req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Authorization", "Bearer tok")
+			rec := newCloseNotifyingRecorder()
+			engine.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", rec.Code)
+			}
+			if !strings.Contains(rec.Body.String(), tt.code) {
+				t.Errorf("body = %s, want error %s", rec.Body.String(), tt.code)
+			}
+			if upstreamHits.Load() != before {
+				t.Error("request reached the upstream")
 			}
 		})
 	}

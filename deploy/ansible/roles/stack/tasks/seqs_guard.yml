@@ -1,0 +1,27 @@
+---
+# One variable, inference_max_seqs, sets both vLLM --max-num-seqs and the
+# gateway's global cap. A partial deploy (-e only=...) rewrites both .env files
+# but restarts one project, so a changed value would leave the two out of step
+# and requests would queue inside vLLM again. Stop instead.
+- name: Read the deployed inference .env
+  ansible.builtin.slurp:
+    src: "{{ repo_dir }}/deploy/inference/.env"
+  register: stack_inference_env
+  failed_when: false
+  no_log: true   # it holds the vLLM key
+
+- name: Stop a partial deploy that changes inference_max_seqs
+  ansible.builtin.assert:
+    that: stack_deployed_seqs == inference_max_seqs | string
+    fail_msg: >-
+      inference_max_seqs is {{ inference_max_seqs }} but the deployed vLLM runs
+      {{ stack_deployed_seqs }}. It sets both vLLM and the gateway cap, so
+      deploy with -e only=all.
+    quiet: true
+  vars:
+    # A .env from before this setting has no line; compose then defaults to 4.
+    stack_deployed_seqs: >-
+      {{ (stack_inference_env.content | b64decode
+      | regex_search('^VLLM_MAX_NUM_SEQS=(\d+)', '\1', multiline=True)
+      | default(['4'], true)) | first }}
+  when: stack_inference_env.content is defined

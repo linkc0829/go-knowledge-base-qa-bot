@@ -1,0 +1,57 @@
+---
+# CI only: the stack role's guard against a partial deploy that changes
+# inference_max_seqs, which sets both vLLM and the gateway cap.
+#   ansible-playbook -i localhost, -c local tests/seqs_guard.yml
+- name: Shared concurrency guard
+  hosts: all
+  gather_facts: false
+  vars:
+    guard: "{{ playbook_dir }}/../roles/stack/tasks/seqs_guard.yml"
+    repo_dir: /tmp/seqs-guard
+    inference_max_seqs: 4
+  tasks:
+    - name: Start from an empty checkout
+      ansible.builtin.file:
+        path: "{{ repo_dir }}"
+        state: absent
+
+    - name: Create the inference directory
+      ansible.builtin.file:
+        path: "{{ repo_dir }}/deploy/inference"
+        state: directory
+        mode: "0755"
+
+    - name: A fresh host (no .env yet) passes
+      ansible.builtin.include_tasks: "{{ guard }}"
+
+    - name: Write a .env from before this setting (compose default 4)
+      ansible.builtin.copy:
+        dest: "{{ repo_dir }}/deploy/inference/.env"
+        content: "VLLM_API_KEY=x\n"
+        mode: "0600"
+
+    - name: An unchanged value passes
+      ansible.builtin.include_tasks: "{{ guard }}"
+
+    - name: Write a .env deployed with 8
+      ansible.builtin.copy:
+        dest: "{{ repo_dir }}/deploy/inference/.env"
+        content: "VLLM_API_KEY=x\nVLLM_MAX_NUM_SEQS=8\n"
+        mode: "0600"
+
+    - name: A changed value stops the play
+      block:
+        - name: Run the guard
+          ansible.builtin.include_tasks: "{{ guard }}"
+        - name: Record that it passed
+          ansible.builtin.set_fact:
+            seqs_guard_stopped: false
+      rescue:
+        - name: Record that it stopped
+          ansible.builtin.set_fact:
+            seqs_guard_stopped: true
+
+    - name: Check the guard stopped the changed value
+      ansible.builtin.assert:
+        that: seqs_guard_stopped
+        fail_msg: the guard let a partial deploy change inference_max_seqs

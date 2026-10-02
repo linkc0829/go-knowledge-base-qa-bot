@@ -45,7 +45,8 @@
 
 - name: Check a partial deploy keeps vLLM and the gateway cap in step
   ansible.builtin.include_tasks: seqs_guard.yml
-  when: only != 'all'
+  # EXPERIMENT: K2 runs no vllm container, so the guard would always fail closed.
+  when: only != 'all' and inference_model == 'gemma'
 
 - name: Install git
   ansible.builtin.apt:

@@ -85,7 +85,7 @@ func main() {
 	h := gateway.NewHandler(
 		upstreamURL, cfg.Gateway.UpstreamAPIKey,
 		embedURL, cfg.Gateway.EmbedUpstreamAPIKey, cfg.Gateway.EmbedModel,
-		limiter, authStore, cfg.Gateway.UpstreamHeaderTimeout, lg,
+		limiter, authStore, cfg.Gateway.UpstreamHeaderTimeout, cfg.Gateway.MaxOutputTokens, lg,
 	)
 
 	engine := httpserver.New(lg)
@@ -119,6 +119,7 @@ func main() {
 		zap.Duration("upstream_header_timeout", cfg.Gateway.UpstreamHeaderTimeout),
 		zap.Int("max_inflight_global", cfg.Gateway.MaxInflightGlobal),
 		zap.Int("max_inflight_per_user", cfg.Gateway.MaxInflightPerUser),
+		zap.Int("max_output_tokens", cfg.Gateway.MaxOutputTokens),
 	)
 
 	select {

@@ -8,6 +8,10 @@
   ansible.builtin.include_tasks: port_guard.yml
   when: only in ['all', 'inference']
 
+- name: Check a partial deploy keeps vLLM and the gateway cap in step
+  ansible.builtin.include_tasks: seqs_guard.yml
+  when: only != 'all'
+
 - name: Install git
   ansible.builtin.apt:
     name: git
@@ -37,6 +41,7 @@
         MODEL_REVISION={{ model_revision }}
         SERVED_MODEL_NAME={{ served_model_name }}
         VLLM_MAX_MODEL_LEN={{ vllm_max_model_len }}
+        VLLM_MAX_NUM_SEQS={{ inference_max_seqs }}
         VLLM_API_KEY={{ vault_vllm_api_key }}
         HF_TOKEN={{ vault_hf_token }}
         HF_CACHE_DIR={{ ai_root }}/hf-cache
@@ -50,6 +55,9 @@
         SERVED_MODEL_NAME={{ served_model_name }}
         KB_EMBED_MODEL={{ kb_embed_model }}
         KB_CHAT_TIMEOUT={{ kb_chat_timeout }}
+        GATEWAY_MAX_INFLIGHT={{ inference_max_seqs }}
+        GATEWAY_MAX_INFLIGHT_PER_USER={{ gateway_max_inflight_per_user }}
+        GATEWAY_MAX_OUTPUT_TOKENS={{ gateway_max_output_tokens }}
     - project: observability
       content: |
         DATA_DIR={{ ai_root }}/observability/data

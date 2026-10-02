@@ -79,6 +79,7 @@ type GatewayConfig struct {
 	EmbedModel            string        `mapstructure:"embed_model"`
 	MaxInflightGlobal     int           `mapstructure:"max_inflight_global"`
 	MaxInflightPerUser    int           `mapstructure:"max_inflight_per_user"`
+	MaxOutputTokens       int           `mapstructure:"max_output_tokens"`
 	Port                  int           `mapstructure:"port"`
 	LogOutput             string        `mapstructure:"log_output"`
 }
@@ -157,6 +158,7 @@ func newViper() *viper.Viper {
 	v.SetDefault("kb.chat_timeout", "30s")
 	v.SetDefault("gateway.max_inflight_global", 64)
 	v.SetDefault("gateway.max_inflight_per_user", 4)
+	v.SetDefault("gateway.max_output_tokens", 16384)
 	v.SetDefault("gateway.port", 12599)
 	v.SetDefault("gateway.log_output", "stdout,log/gateway.log")
 	v.SetDefault("gateway.upstream_header_timeout", "300s")
@@ -196,6 +198,7 @@ func newViper() *viper.Viper {
 		"gateway.embed_model":             "GATEWAY_EMBED_MODEL",
 		"gateway.max_inflight_global":     "GATEWAY_MAX_INFLIGHT",
 		"gateway.max_inflight_per_user":   "GATEWAY_MAX_INFLIGHT_PER_USER",
+		"gateway.max_output_tokens":       "GATEWAY_MAX_OUTPUT_TOKENS",
 		"gateway.port":                    "GATEWAY_PORT",
 		"gateway.log_output":              "GATEWAY_LOG_OUTPUT",
 	}

@@ -71,7 +71,7 @@ func setupTestGateway(t *testing.T, upstreamHandler http.Handler, resolver Token
 	}
 
 	limiter := NewLimiter(maxGlobal, maxPerUser)
-	h := NewHandler(uURL, "upstream-secret-key", nil, "", "", limiter, resolver, 0, zap.NewNop())
+	h := NewHandler(uURL, "upstream-secret-key", nil, "", "", limiter, resolver, 0, 0, zap.NewNop())
 
 	engine := gin.New()
 	RegisterRoutes(engine.Group(""), h)
@@ -667,7 +667,7 @@ func TestHandler_TransportConfiguration(t *testing.T) {
 	uURL, _ := url.Parse("http://localhost:8080")
 
 	// Custom timeout
-	hCustom := NewHandler(uURL, "key", nil, "", "", NewLimiter(10, 5), nil, 120*time.Second, zap.NewNop())
+	hCustom := NewHandler(uURL, "key", nil, "", "", NewLimiter(10, 5), nil, 120*time.Second, 0, zap.NewNop())
 	trCustom, ok := hCustom.chatProxy.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("expected *http.Transport, got %T", hCustom.chatProxy.Transport)
@@ -680,7 +680,7 @@ func TestHandler_TransportConfiguration(t *testing.T) {
 	}
 
 	// Default fallback to 300s when <= 0
-	hDefault := NewHandler(uURL, "key", nil, "", "", NewLimiter(10, 5), nil, 0, zap.NewNop())
+	hDefault := NewHandler(uURL, "key", nil, "", "", NewLimiter(10, 5), nil, 0, 0, zap.NewNop())
 	trDefault, ok := hDefault.chatProxy.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("expected *http.Transport, got %T", hDefault.chatProxy.Transport)
@@ -751,7 +751,7 @@ func TestHandler_UpstreamFailure_Sanitized502(t *testing.T) {
 	}
 
 	limiter := NewLimiter(10, 5)
-	h := NewHandler(uURL, "upstream-secret-key", nil, "", "", limiter, resolver, 0, zap.NewNop())
+	h := NewHandler(uURL, "upstream-secret-key", nil, "", "", limiter, resolver, 0, 0, zap.NewNop())
 
 	engine := gin.New()
 	RegisterRoutes(engine.Group(""), h)
@@ -803,7 +803,7 @@ func TestHandler_UpstreamTimeout_504(t *testing.T) {
 
 	// Configure a short 30ms response header timeout
 	limiter := NewLimiter(10, 5)
-	h := NewHandler(uURL, "upstream-secret-key", nil, "", "", limiter, resolver, 30*time.Millisecond, zap.NewNop())
+	h := NewHandler(uURL, "upstream-secret-key", nil, "", "", limiter, resolver, 30*time.Millisecond, 0, zap.NewNop())
 
 	engine := gin.New()
 	RegisterRoutes(engine.Group(""), h)
@@ -885,7 +885,7 @@ func TestHandler_Embeddings_RoutingAndModelBinding(t *testing.T) {
 		h := NewHandler(
 			chatURL, "chat-key",
 			embedURL, "embed-key", "gemini-embedding-2",
-			NewLimiter(10, 5), resolver, 0, zap.NewNop(),
+			NewLimiter(10, 5), resolver, 0, 0, zap.NewNop(),
 		)
 		r := gin.New()
 		RegisterRoutes(r.Group(""), h)
@@ -940,7 +940,7 @@ func TestHandler_Embeddings_RoutingAndModelBinding(t *testing.T) {
 		h := NewHandler(
 			chatURL, "chat-key",
 			embedURL, "embed-key", "gemini-embedding-2",
-			NewLimiter(10, 5), resolver, 0, zap.NewNop(),
+			NewLimiter(10, 5), resolver, 0, 0, zap.NewNop(),
 		)
 		r := gin.New()
 		RegisterRoutes(r.Group(""), h)
@@ -968,7 +968,7 @@ func TestHandler_Embeddings_RoutingAndModelBinding(t *testing.T) {
 		h := NewHandler(
 			chatURL, "chat-key",
 			nil, "", "",
-			NewLimiter(10, 5), resolver, 0, zap.NewNop(),
+			NewLimiter(10, 5), resolver, 0, 0, zap.NewNop(),
 		)
 		r := gin.New()
 		RegisterRoutes(r.Group(""), h)
@@ -1012,7 +1012,7 @@ func TestHandler_Embeddings_RoutingAndModelBinding(t *testing.T) {
 				h := NewHandler(
 					chatURL, "chat-key",
 					embedURL, "embed-key", "gemini-embedding-2",
-					NewLimiter(10, 5), resolver, 0, zap.NewNop(),
+					NewLimiter(10, 5), resolver, 0, 0, zap.NewNop(),
 				)
 				r := gin.New()
 				RegisterRoutes(r.Group(""), h)
@@ -1056,7 +1056,7 @@ func TestHandler_Embeddings_RoutingAndModelBinding(t *testing.T) {
 		h := NewHandler(
 			chatURL, "chat-key",
 			embedURL, "embed-key", "gemini-embedding-2",
-			NewLimiter(10, 5), resolver, 0, zap.NewNop(),
+			NewLimiter(10, 5), resolver, 0, 0, zap.NewNop(),
 		)
 		r := gin.New()
 		RegisterRoutes(r.Group(""), h)
@@ -1088,7 +1088,7 @@ func TestHandler_Embeddings_RoutingAndModelBinding(t *testing.T) {
 		h := NewHandler(
 			chatURL, "chat-key",
 			embedURL, "embed-key", "gemini-embedding-2",
-			NewLimiter(10, 5), resolver, 0, zap.NewNop(),
+			NewLimiter(10, 5), resolver, 0, 0, zap.NewNop(),
 		)
 		r := gin.New()
 		RegisterRoutes(r.Group(""), h)
@@ -1111,7 +1111,7 @@ func TestHandler_Embeddings_RoutingAndModelBinding(t *testing.T) {
 		h := NewHandler(
 			chatURL, "chat-key",
 			nil, "", "local-embed-model",
-			NewLimiter(10, 5), resolver, 0, zap.NewNop(),
+			NewLimiter(10, 5), resolver, 0, 0, zap.NewNop(),
 		)
 		r := gin.New()
 		RegisterRoutes(r.Group(""), h)
@@ -1335,6 +1335,110 @@ func TestHandler_Readyz(t *testing.T) {
 			engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 			if w.Code != http.StatusOK {
 				t.Errorf("GET /healthz = %d, want 200 regardless of upstream", w.Code)
+			}
+		})
+	}
+}
+
+// The cap only protects the backend if it reaches the upstream body, on the
+// routes clients actually use, without inflating /v1/completions' default.
+func TestHandler_OutputTokensCapped(t *testing.T) {
+	resolver := &mockResolver{principals: map[string]shared.Principal{"tok": {ID: "u1"}}}
+
+	var received map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received = nil
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Errorf("decode upstream body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[]}`))
+	}))
+	t.Cleanup(upstream.Close)
+	uURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("parse upstream url: %v", err)
+	}
+	gin.SetMode(gin.TestMode)
+	h := NewHandler(uURL, "key", nil, "", "", NewLimiter(10, 5), resolver, 0, 1000, zap.NewNop())
+	engine := gin.New()
+	RegisterRoutes(engine.Group(""), h)
+
+	tests := []struct {
+		name string
+		path string
+		body string
+		want any // max_tokens the upstream sees; nil means absent
+	}{
+		{name: "chat_over_cap", path: "/v1/chat/completions", body: `{"model":"m","max_tokens":16000}`, want: float64(1000)},
+		{name: "chat_missing_filled", path: "/v1/chat/completions", body: `{"model":"m"}`, want: float64(1000)},
+		{name: "chat_stream_over_cap", path: "/v1/chat/completions", body: `{"model":"m","stream":true,"max_tokens":16000}`, want: float64(1000)},
+		{name: "completions_over_cap", path: "/v1/completions", body: `{"model":"m","max_tokens":16000}`, want: float64(1000)},
+		{name: "completions_missing_kept", path: "/v1/completions", body: `{"model":"m"}`, want: nil},
+		{name: "chat_numeric_string_over_cap", path: "/v1/chat/completions", body: `{"model":"m","max_tokens":"90000"}`, want: float64(1000)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Authorization", "Bearer tok")
+			rec := newCloseNotifyingRecorder()
+			engine.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+			if got := received["max_tokens"]; got != tt.want {
+				t.Errorf("upstream max_tokens = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// Requests the gateway cannot bound must stop here with 400, never reach the
+// upstream: an unreadable output limit, or a fan-out to several sequences.
+func TestHandler_UnboundedRequestsRejected(t *testing.T) {
+	resolver := &mockResolver{principals: map[string]shared.Principal{"tok": {ID: "u1"}}}
+	var upstreamHits atomic.Int32
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamHits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[]}`))
+	})
+	gin.SetMode(gin.TestMode)
+	srv := httptest.NewServer(upstream)
+	t.Cleanup(srv.Close)
+	uURL, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse upstream url: %v", err)
+	}
+	h := NewHandler(uURL, "key", nil, "", "", NewLimiter(10, 5), resolver, 0, 1000, zap.NewNop())
+	engine := gin.New()
+	RegisterRoutes(engine.Group(""), h)
+
+	tests := []struct {
+		name string
+		path string
+		body string
+		code string
+	}{
+		{name: "non_numeric_max_tokens", path: "/v1/chat/completions", body: `{"model":"m","max_tokens":"lots"}`, code: "invalid_max_tokens"},
+		{name: "chat_n_five", path: "/v1/chat/completions", body: `{"model":"m","n":5}`, code: "multiple_sequences_not_supported"},
+		{name: "completions_prompt_list", path: "/v1/completions", body: `{"model":"m","prompt":["a","b"]}`, code: "multiple_sequences_not_supported"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := upstreamHits.Load()
+			req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Authorization", "Bearer tok")
+			rec := newCloseNotifyingRecorder()
+			engine.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", rec.Code)
+			}
+			if !strings.Contains(rec.Body.String(), tt.code) {
+				t.Errorf("body = %s, want error %s", rec.Body.String(), tt.code)
+			}
+			if upstreamHits.Load() != before {
+				t.Error("request reached the upstream")
 			}
 		})
 	}

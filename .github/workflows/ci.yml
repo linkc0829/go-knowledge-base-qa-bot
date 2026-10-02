@@ -135,7 +135,7 @@ jobs:
       - name: stack port 8000 guard against real listeners
         run: sudo "$(command -v ansible-playbook)" -i localhost, -c local tests/port_guard.yml
       - name: stack shared-concurrency guard
-        run: ansible-playbook -i localhost, -c local tests/seqs_guard.yml
+        run: sudo "$(command -v ansible-playbook)" -i localhost, -c local tests/seqs_guard.yml
 
   govulncheck:
     runs-on: ubuntu-latest

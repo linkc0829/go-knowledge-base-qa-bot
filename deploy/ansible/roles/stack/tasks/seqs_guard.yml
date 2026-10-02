@@ -2,26 +2,53 @@
 # One variable, inference_max_seqs, sets both vLLM --max-num-seqs and the
 # gateway's global cap. A partial deploy (-e only=...) rewrites both .env files
 # but restarts one project, so a changed value would leave the two out of step
-# and requests would queue inside vLLM again. Stop instead.
-- name: Read the deployed inference .env
-  ansible.builtin.slurp:
-    src: "{{ repo_dir }}/deploy/inference/.env"
-  register: stack_inference_env
-  failed_when: false
-  no_log: true   # it holds the vLLM key
+# and requests would queue inside vLLM again. Check what the running containers
+# use, not the .env on disk (it may already differ from the runtime), and fail
+# closed: a container that is missing or unreadable also stops the play.
+- name: Find the running vLLM and gateway containers
+  ansible.builtin.command: >-
+    docker ps -q
+    --filter label=com.docker.compose.project={{ item.project }}
+    --filter label=com.docker.compose.service={{ item.service }}
+  loop:
+    - {project: inference, service: vllm}
+    - {project: platform, service: gateway}
+  loop_control:
+    label: "{{ item.service }}"
+  register: stack_seqs_ps
+  changed_when: false
+  check_mode: false
 
-- name: Stop a partial deploy that changes inference_max_seqs
+- name: Inspect them
+  ansible.builtin.command: "docker inspect {{ item.stdout_lines | first }}"
+  loop: "{{ stack_seqs_ps.results }}"
+  loop_control:
+    label: "{{ item.item.service }}"
+  when: item.stdout_lines | length > 0
+  register: stack_seqs_inspect
+  changed_when: false
+  check_mode: false
+  no_log: true   # the gateway's environment holds upstream keys
+
+- name: Stop a partial deploy that would change inference_max_seqs
   ansible.builtin.assert:
-    that: stack_deployed_seqs == inference_max_seqs | string
+    that:
+      - stack_running_vllm_seqs | string == inference_max_seqs | string
+      - stack_running_gateway_cap | string == inference_max_seqs | string
     fail_msg: >-
-      inference_max_seqs is {{ inference_max_seqs }} but the deployed vLLM runs
-      {{ stack_deployed_seqs }}. It sets both vLLM and the gateway cap, so
-      deploy with -e only=all.
+      inference_max_seqs is {{ inference_max_seqs }}, but the running vLLM uses
+      --max-num-seqs={{ stack_running_vllm_seqs or 'unknown' }} and the gateway
+      GATEWAY_MAX_INFLIGHT={{ stack_running_gateway_cap or 'unknown' }}. Both
+      must match before a partial deploy; use -e only=all.
     quiet: true
   vars:
-    # A .env from before this setting has no line; compose then defaults to 4.
-    stack_deployed_seqs: >-
-      {{ (stack_inference_env.content | b64decode
-      | regex_search('^VLLM_MAX_NUM_SEQS=(\d+)', '\1', multiline=True)
-      | default(['4'], true)) | first }}
-  when: stack_inference_env.content is defined
+    stack_vllm_cmd: >-
+      {{ ((stack_seqs_inspect.results[0].stdout | default('[{}]') | from_json)[0].Config | default({})).Cmd | default([], true) }}
+    stack_gateway_env: >-
+      {{ ((stack_seqs_inspect.results[1].stdout | default('[{}]') | from_json)[0].Config | default({})).Env | default([], true) }}
+    stack_running_vllm_seqs: >-
+      {{ stack_vllm_cmd[stack_vllm_cmd.index('--max-num-seqs') + 1]
+      if '--max-num-seqs' in stack_vllm_cmd else '' }}
+    stack_running_gateway_cap: >-
+      {{ stack_gateway_env | select('match', '^GATEWAY_MAX_INFLIGHT=')
+      | map('regex_replace', '^GATEWAY_MAX_INFLIGHT=', '') | first | default('') }}

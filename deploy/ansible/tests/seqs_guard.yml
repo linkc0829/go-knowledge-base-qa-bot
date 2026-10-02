@@ -1,57 +1,74 @@
 ---
 # CI only: the stack role's guard against a partial deploy that changes
-# inference_max_seqs, which sets both vLLM and the gateway cap.
-#   ansible-playbook -i localhost, -c local tests/seqs_guard.yml
+# inference_max_seqs, which sets both vLLM and the gateway cap. It reads the
+# running containers, so the runner's Docker stands in for them.
+#   sudo ansible-playbook -i localhost, -c local tests/seqs_guard.yml
 - name: Shared concurrency guard
   hosts: all
+  become: true
   gather_facts: false
   vars:
     guard: "{{ playbook_dir }}/../roles/stack/tasks/seqs_guard.yml"
-    repo_dir: /tmp/seqs-guard
     inference_max_seqs: 4
+    vllm_labels: >-
+      --label com.docker.compose.project=inference
+      --label com.docker.compose.service=vllm
+    gateway_labels: >-
+      --label com.docker.compose.project=platform
+      --label com.docker.compose.service=gateway
   tasks:
-    - name: Start from an empty checkout
-      ansible.builtin.file:
-        path: "{{ repo_dir }}"
-        state: absent
-
-    - name: Create the inference directory
-      ansible.builtin.file:
-        path: "{{ repo_dir }}/deploy/inference"
-        state: directory
-        mode: "0755"
-
-    - name: A fresh host (no .env yet) passes
-      ansible.builtin.include_tasks: "{{ guard }}"
-
-    - name: Write a .env from before this setting (compose default 4)
-      ansible.builtin.copy:
-        dest: "{{ repo_dir }}/deploy/inference/.env"
-        content: "VLLM_API_KEY=x\n"
-        mode: "0600"
-
-    - name: An unchanged value passes
-      ansible.builtin.include_tasks: "{{ guard }}"
-
-    - name: Write a .env deployed with 8
-      ansible.builtin.copy:
-        dest: "{{ repo_dir }}/deploy/inference/.env"
-        content: "VLLM_API_KEY=x\nVLLM_MAX_NUM_SEQS=8\n"
-        mode: "0600"
-
-    - name: A changed value stops the play
+    - name: Nothing running (value unknown) stops the play
       block:
         - name: Run the guard
           ansible.builtin.include_tasks: "{{ guard }}"
         - name: Record that it passed
           ansible.builtin.set_fact:
-            seqs_guard_stopped: false
+            seqs_guard_stopped_unknown: false
       rescue:
         - name: Record that it stopped
           ansible.builtin.set_fact:
-            seqs_guard_stopped: true
+            seqs_guard_stopped_unknown: true
 
-    - name: Check the guard stopped the changed value
+    - name: Check, then try matching and changed values
+      block:
+        # sh ignores the trailing words; they only sit in Config.Cmd like
+        # vLLM's own flags do.
+        - name: Start a stand-in vLLM with --max-num-seqs 4
+          ansible.builtin.command: >-
+            docker run -d --name seqs-vllm {{ vllm_labels }}
+            busybox sh -c 'sleep 300' -- --max-num-seqs 4
+          changed_when: true
+        - name: Start a stand-in gateway with GATEWAY_MAX_INFLIGHT=4
+          ansible.builtin.command: >-
+            docker run -d --name seqs-gateway {{ gateway_labels }}
+            -e GATEWAY_MAX_INFLIGHT=4 busybox sleep 300
+          changed_when: true
+
+        - name: Matching values pass
+          ansible.builtin.include_tasks: "{{ guard }}"
+
+        - name: A changed value stops the play
+          block:
+            - name: Run the guard with inference_max_seqs 8
+              ansible.builtin.include_tasks: "{{ guard }}"
+              vars:
+                inference_max_seqs: 8
+            - name: Record that it passed
+              ansible.builtin.set_fact:
+                seqs_guard_stopped_changed: false
+          rescue:
+            - name: Record that it stopped
+              ansible.builtin.set_fact:
+                seqs_guard_stopped_changed: true
+      always:
+        - name: Remove the stand-ins
+          ansible.builtin.command: docker rm -f seqs-vllm seqs-gateway
+          changed_when: true
+          failed_when: false
+
+    - name: Check the guard stopped both unsafe cases
       ansible.builtin.assert:
-        that: seqs_guard_stopped
-        fail_msg: the guard let a partial deploy change inference_max_seqs
+        that:
+          - seqs_guard_stopped_unknown
+          - seqs_guard_stopped_changed
+        fail_msg: the guard let a partial deploy through without a confirmed match

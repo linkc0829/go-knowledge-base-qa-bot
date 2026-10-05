@@ -5,9 +5,6 @@
 #   ansible-playbook site.yml --tags stack -e only=platform     # redeploy the app only
 - name: AI Station
   hosts: ai_station
-  # Also in ansible.cfg, but that is only read from the current directory, and
-  # Semaphore may run the playbook from elsewhere.
-  become: true
   vars_files:
     - "{{ vault_file | default('vault.yml') }}"
   roles:

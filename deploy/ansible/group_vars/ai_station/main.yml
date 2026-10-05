@@ -45,6 +45,12 @@ repo_dir: "{{ ai_root }}/src/llm-platform"
 # the observability .env never drifts from the host.
 ailogs_gid: 2500
 
+# Skip TLS verification of the SMTP relay. Keep false here; set it per host in
+# the (gitignored) inventory.yml only while the relay serves a certificate Go
+# cannot verify, such as a self-signed cert with no SAN. Mail stays encrypted
+# but the relay is not authenticated.
+grafana_smtp_skip_verify: false
+
 # Clients allowed to reach gateway 12599, kb 12598 and Grafana 3000.
 # Plain HTTP (decided until Phase 6), so keep this as narrow as practical.
 client_subnets: []            # e.g. ["192.168.17.0/24"]

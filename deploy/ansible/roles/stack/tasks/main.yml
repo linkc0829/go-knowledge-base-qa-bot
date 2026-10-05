@@ -119,6 +119,7 @@
         GRAFANA_SMTP_USER={{ vault_grafana_smtp_user | default('') }}
         GRAFANA_SMTP_PASSWORD={{ vault_grafana_smtp_password | default('') }}
         GRAFANA_SMTP_FROM={{ vault_grafana_smtp_from | default('') }}
+        GRAFANA_SMTP_SKIP_VERIFY={{ grafana_smtp_skip_verify | bool | string | lower }}
         ALERT_EMAIL_TO={{ (vault_alert_email_to | default([])) | join(';') }}
         GRAFANA_ROOT_URL=http://{{ ansible_host | default(inventory_hostname) }}:3000
   loop_control:

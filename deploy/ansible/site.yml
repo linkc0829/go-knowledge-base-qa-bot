@@ -15,4 +15,5 @@
     - { role: ai_dirs, tags: [host] }
     - { role: firewall, tags: [host] }
     - { role: disk_probe, tags: [host] }
+    - { role: ready_probe, tags: [host] }
     - { role: stack, tags: [stack] }

@@ -105,6 +105,7 @@ jobs:
           python-version: "3.x"
       - run: python deploy/observability/alloy/test/run.py
       - run: python deploy/observability/grafana/test/check_queries.py
+      - run: python deploy/observability/grafana/test/check_alerting.py
 
   # Host setup and deployment playbooks: syntax and lint only. A real run
   # needs the AI Station (deploy/README.md acceptance checklist).

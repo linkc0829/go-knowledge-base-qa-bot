@@ -7,3 +7,8 @@ vault_hf_token: ""              # optional: the pinned checkpoint is not gated
 vault_gemini_api_key: ""        # embeddings upstream (gateway only)
 vault_kb_gateway_token: ""      # kbtoken create -name kb -trusted -workload rag
 vault_grafana_admin_password: "" # openssl rand -base64 24
+vault_grafana_smtp_host: ""     # host:port of the SMTP relay (e.g. smtp.internal:25)
+vault_grafana_smtp_user: ""     # optional: SMTP username
+vault_grafana_smtp_password: "" # optional: SMTP password
+vault_grafana_smtp_from: ""     # sender email (e.g. llm-alert@internal.net)
+vault_alert_email_to: []        # recipient list (e.g. ["ops@example.com"])

@@ -36,6 +36,7 @@ ansible-playbook site.yml --ask-vault-pass --tags stack -e only=platform   # app
 | `ai_dirs` | the directories below, the `ailogs` group, pre-created 0640 log files |
 | `firewall` | UFW: SSH from `ssh_subnets` first, then 12599/12598/3000 from `client_subnets`. **Docker-published ports skip UFW**, so the same allowlist also goes into Docker's `DOCKER-USER` chain, for the default-route interface only (a second LAN-facing NIC would need adding) |
 | `disk_probe` | systemd timer, every 10 min, `host_disk` lines into `host.log` |
+| `ready_probe` | systemd timer, every 1 min, `host_ready` lines into `host.log` probing gateway `/readyz` and kb `/ready` |
 | `stack` | pinned checkout of this repo, one 0600 `.env` per project, `ai-net`, `compose up` in order |
 
 - **Secrets** live only in `vault.yml` (ansible-vault) and in the 0600 `.env` files it writes. The tasks that write them set `no_log` and `diff: false`, so `--check --diff` does not print them. Keep the vault password in the maintainers' password manager.
@@ -207,5 +208,14 @@ Each healthcheck tests only its own container. The whole request chain is tested
    - `backup.yml` (routine): the writers and the timer were stopped, then started again;
    - the tar is 0600 on the host (while it exists) and on the control node;
    - restore it into a scratch host or directory and check that `auth.json`, `.kb`, the Grafana users and the Loki history are all there.
+10. Alerting drill:
+   - Before deploying observability, fill `vault_grafana_smtp_*` and `vault_alert_email_to` in `vault.yml`.
+   - In Grafana Alerting, verify that 5 rules exist under folder "LLM Platform" and contact point `ops-email` is configured.
+   - Test email: test via contact points Test button, or stop the gateway (`docker compose -p platform stop gateway`) and verify an alert email arrives within ~3–5 minutes (3 probe failures + 1 evaluation cycle) while dashboard "Service ready" turns red; restart the gateway and verify auto-resolve.
 
 Not yet verified on the machine: everything above. CI builds the image, tests the Alloy allowlist and the dashboard queries against the pinned images, and syntax-checks and lints the playbooks. Nothing here has run on the AI Station yet.
+
+## Known limitations
+- **Whole-host failure produces no email**: Grafana runs on the same machine. Detecting an unreachable host requires external probing.
+- **SMTP connectivity**: whether outbound SMTP connects cleanly depends on AI Station network egress; verify with the test email.
+- **`host.log` log rotation**: `ready_probe` appends one line/min (~50 MB/year) alongside disk probe; log rotation is a follow-up.

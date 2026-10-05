@@ -1,0 +1,15 @@
+---
+# Secrets live in two places synced by hand: vault.yml for CLI runs and the
+# Semaphore variable group for PM deploys. vault.example.yml lists every key,
+# so a key added there but not to both fails here instead of deploying blank.
+- name: Check every vault key is set
+  vars:
+    stack_vault_missing: >-
+      {{ (lookup('file', role_path ~ '/../../vault.example.yml') | from_yaml).keys()
+         | difference(query('varnames', '^vault_')) }}
+  ansible.builtin.assert:
+    that: stack_vault_missing | length == 0
+    fail_msg: >-
+      Not set: {{ stack_vault_missing | join(', ') }}. Add them to vault.yml or
+      the Semaphore variable group (see vault.example.yml).
+    quiet: true

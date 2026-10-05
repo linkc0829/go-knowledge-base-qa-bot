@@ -27,7 +27,7 @@ declare "allowlist" {
     }
 
     stage.match {
-      selector            = "{msg!~\"gateway_usage|kb_query|llm_usage|host_disk\"}"
+      selector            = "{msg!~\"gateway_usage|kb_query|llm_usage|host_disk|host_ready\"}"
       action              = "drop"
       drop_counter_reason = "not_allowlisted"
     }
@@ -128,6 +128,23 @@ declare "allowlist" {
       stage.template {
         source   = "out"
         template = `{{ dict "ts" .ts "mount" .mount "used_pct" .used_pct "avail_gb" .avail_gb | toJson }}`
+      }
+    }
+
+    stage.match {
+      selector = "{msg=\"host_ready\"}"
+
+      stage.json {
+        expressions = {
+          ts      = "ts",
+          gateway = "gateway",
+          kb      = "kb",
+        }
+      }
+
+      stage.template {
+        source   = "out"
+        template = `{{ dict "ts" .ts "gateway" .gateway "kb" .kb | toJson }}`
       }
     }
 

@@ -39,6 +39,15 @@
           and {{ ai_root }}/gguf/{{ k2_gguf }} ({{ 'found' if stack_k2_gguf.stat.exists else 'MISSING' }}).
       when: stack_k2_image.rc != 0 or not stack_k2_gguf.stat.exists
 
+- name: Check observability SMTP and alert recipients
+  ansible.builtin.assert:
+    that:
+      - vault_grafana_smtp_host is defined and (vault_grafana_smtp_host | length > 0)
+      - vault_grafana_smtp_from is defined and (vault_grafana_smtp_from | length > 0)
+      - vault_alert_email_to is defined and (vault_alert_email_to | length > 0)
+    fail_msg: "observability deployment requires vault_grafana_smtp_host, vault_grafana_smtp_from, and vault_alert_email_to"
+  when: only in ['all', 'observability']
+
 - name: Check nothing else holds vLLM's port
   ansible.builtin.include_tasks: port_guard.yml
   when: only in ['all', 'inference']
@@ -106,6 +115,12 @@
         PLATFORM_LOG_DIR={{ ai_root }}/platform/data/log
         AILOGS_GID={{ ailogs_gid }}
         GRAFANA_ADMIN_PASSWORD={{ vault_grafana_admin_password }}
+        GRAFANA_SMTP_HOST={{ vault_grafana_smtp_host | default('') }}
+        GRAFANA_SMTP_USER={{ vault_grafana_smtp_user | default('') }}
+        GRAFANA_SMTP_PASSWORD={{ vault_grafana_smtp_password | default('') }}
+        GRAFANA_SMTP_FROM={{ vault_grafana_smtp_from | default('') }}
+        ALERT_EMAIL_TO={{ (vault_alert_email_to | default([])) | join(';') }}
+        GRAFANA_ROOT_URL=http://{{ ansible_host | default(inventory_hostname) }}:3000
   loop_control:
     label: "{{ item.project }}"
   no_log: true

@@ -65,13 +65,24 @@ def main() -> int:
                 n += 1
                 if code != 200:
                     failures.append(f"{panel['title']} [{t['refId']}] -> {code}: {body.strip()[:300]}")
+
+        alerts_file = OBS / "grafana/provisioning/alerting/alerts.yaml"
+        if alerts_file.exists():
+            for line in alerts_file.read_text(encoding="utf-8").splitlines():
+                m = re.match(r"^\s*expr:\s*(['\"]?)(.+?)\1\s*$", line)
+                if m:
+                    expr = m.group(2)
+                    code, body = get("/loki/api/v1/query", query=expr, time=now)
+                    n += 1
+                    if code != 200:
+                        failures.append(f"alert [{expr}] -> {code}: {body.strip()[:300]}")
     finally:
         subprocess.run(["docker", "rm", "-f", NAME], capture_output=True)
 
     if failures:
         print(f"FAIL ({image}):", *failures, sep="\n  ")
         return 1
-    print(f"{n} dashboard queries ok ({image})")
+    print(f"{n} queries ok ({image})")
     return 0
 
 

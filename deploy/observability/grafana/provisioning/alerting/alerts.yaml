@@ -1,0 +1,229 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: ops-email
+    receivers:
+      - uid: ops-email-receiver
+        type: email
+        settings:
+          addresses: "$__env{ALERT_EMAIL_TO}"
+
+policies:
+  - orgId: 1
+    receiver: ops-email
+    group_by:
+      - grafana_folder
+    repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: "LLM Platform"
+    folder: "LLM Platform"
+    interval: 1m
+    rules:
+      - uid: gateway-not-ready
+        title: Gateway not ready
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: loki
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              editorMode: code
+              expr: 'sum(count_over_time({service="host",msg="host_ready"} | json | gateway != "200" [5m]))'
+              queryType: instant
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 2
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: Gateway /readyz failed >= 3 times in 5m
+
+      - uid: kb-not-ready
+        title: KB not ready
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: loki
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              editorMode: code
+              expr: 'sum(count_over_time({service="host",msg="host_ready"} | json | kb != "200" [5m]))'
+              queryType: instant
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 2
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: KB /ready failed >= 3 times in 5m
+
+      - uid: ready-probe-missing
+        title: Ready probe missing
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: loki
+            queryType: instant
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              editorMode: code
+              expr: 'sum(count_over_time({service="host",msg="host_ready"}[10m]))'
+              queryType: instant
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: Host ready probe has produced no data for 10m
+
+      - uid: gateway-5xx-rate
+        title: Gateway 5xx rate
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: loki
+            queryType: instant
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              editorMode: code
+              expr: 'sum(count_over_time({service="gateway", msg="gateway_usage"} | json | path=~".*/completions" | status >= 500 [10m]))'
+              queryType: instant
+          - refId: B
+            datasourceUid: loki
+            queryType: instant
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              editorMode: code
+              expr: 'sum(count_over_time({service="gateway", msg="gateway_usage"} | json | path=~".*/completions" [10m]))'
+              queryType: instant
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: '$B >= 20 && $A / $B > 0.05'
+              type: math
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: Gateway 5xx rate > 5% with at least 20 requests in 10m
+
+      - uid: host-disk-used
+        title: Disk usage
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: loki
+            queryType: instant
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            model:
+              editorMode: code
+              expr: 'max by (mount) (max_over_time({service="host", msg="host_disk"} | json | unwrap used_pct [30m]) by (mount))'
+              queryType: instant
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 85
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: Host disk usage > 85%

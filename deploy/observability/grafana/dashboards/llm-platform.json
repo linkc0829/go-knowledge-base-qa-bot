@@ -95,7 +95,7 @@
       "gridPos": {
         "x": 6,
         "y": 0,
-        "w": 18,
+        "w": 12,
         "h": 5
       },
       "targets": [
@@ -111,6 +111,96 @@
         }
       ],
       "interval": "1d"
+    },
+    {
+      "id": 10,
+      "title": "Service ready",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Readiness probe every minute. 200 = up.",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "last_over_time({service=\"host\", msg=\"host_ready\"} | json | unwrap gateway [5m])",
+          "legendFormat": "gateway",
+          "queryType": "instant"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "last_over_time({service=\"host\", msg=\"host_ready\"} | json | unwrap kb [5m])",
+          "legendFormat": "kb",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "200": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": -999,
+                "to": 199,
+                "result": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 201,
+                "to": 999,
+                "result": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 2
+                }
+              }
+            },
+            {
+              "type": "special",
+              "options": {
+                "match": "null+nan",
+                "result": {
+                  "text": "NO DATA",
+                  "color": "red",
+                  "index": 3
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
     },
     {
       "id": 3,

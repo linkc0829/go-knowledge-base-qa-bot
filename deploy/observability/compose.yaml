@@ -67,6 +67,9 @@ services:
       GF_SMTP_PASSWORD: ${GRAFANA_SMTP_PASSWORD:-}
       GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:?SMTP from address}
       GF_SMTP_FROM_NAME: LLM Platform Alert
+      # Off unless the relay's certificate cannot be verified (e.g. a
+      # self-signed cert with no SAN). Still encrypted, but unauthenticated.
+      GF_SMTP_SKIP_VERIFY: ${GRAFANA_SMTP_SKIP_VERIFY:-false}
       ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?email recipients separated by semicolon}
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
     volumes:

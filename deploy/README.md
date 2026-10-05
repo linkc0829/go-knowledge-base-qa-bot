@@ -218,4 +218,5 @@ Not yet verified on the machine: everything above. CI builds the image, tests th
 ## Known limitations
 - **Whole-host failure produces no email**: Grafana runs on the same machine. Detecting an unreachable host requires external probing.
 - **SMTP connectivity**: whether outbound SMTP connects cleanly depends on AI Station network egress; verify with the test email.
+- **SMTP certificate**: Grafana (Go) checks only the certificate's SAN, never the CN. A relay with a self-signed cert and no SAN fails with `certificate is not valid for any names`. Check it with `openssl s_client -connect <host>:587 -starttls smtp </dev/null | openssl x509 -noout -subject -ext subjectAltName`. The fix is a certificate with a SAN for the relay's hostname. Until then, set `grafana_smtp_skip_verify: true` for that host in `inventory.yml`, which keeps the mail encrypted but does not authenticate the relay, and set it back once the cert is replaced.
 - **`host.log` log rotation**: `ready_probe` appends one line/min (~50 MB/year) alongside disk probe; log rotation is a follow-up.

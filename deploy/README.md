@@ -39,7 +39,7 @@ ansible-playbook site.yml --ask-vault-pass --tags stack -e only=platform   # app
 | `ready_probe` | systemd timer, every 1 min, `host_ready` lines into `host.log` probing gateway `/readyz` and kb `/ready` |
 | `stack` | pinned checkout of this repo, one 0600 `.env` per project, `ai-net`, `compose up` in order |
 
-- **Secrets** live only in `vault.yml` (ansible-vault) and in the 0600 `.env` files it writes. The tasks that write them set `no_log` and `diff: false`, so `--check --diff` does not print them. Keep the vault password in the maintainers' password manager.
+- **Secrets** live only in `vault.yml` (ansible-vault), Semaphore's variable group (see "Semaphore UI" below) and the 0600 `.env` files they write. The tasks that write them set `no_log` and `diff: false`, so `--check --diff` does not print them. Keep the vault password in the maintainers' password manager.
 - **The old project.** If the POC's hand-made `/srv/ai/vllm` project is still running, the play stops and asks you to run `docker compose down` there yourself. It never stops vLLM on its own.
 - **Limits of `--check`.**
   - On a new host it cannot show what depends on a package that isn't installed yet, and it doesn't build or start containers.
@@ -85,6 +85,37 @@ ansible-playbook restore.yml -e backup_file=backups/ai-station-<ts>.tar.gz
   3. New host: `restore.yml -e backup_file=…`
   4. New host: `site.yml --tags stack`
   5. Run the acceptance checklist, then switch clients to the new IP. Keep the old host stopped as a rollback.
+
+### Semaphore UI (PM deploys)
+
+[`semaphore/`](semaphore/compose.yaml) gives the PM a deploy button. Semaphore pulls `main`, runs `site.yml --tags stack` with the secrets it stores, and logs who ran it, when, and at which commit. Changes still go through a PR to `main`. Host-level changes (`--tags host`) stay on the CLI.
+
+Install it on a LAN machine other than the AI Station. Its IP must be inside `ssh_subnets`, or UFW drops its SSH.
+
+```bash
+cd deploy/semaphore
+cp .env.example .env && chmod 600 .env                  # fill it
+sudo mkdir -p /srv/semaphore/db /srv/semaphore/config && sudo chown -R 1001 /srv/semaphore
+ssh-keyscan 192.168.22.101 > known_hosts                # compare with: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on the host
+docker compose up -d                                    # http://<machine>:3000, log in as admin
+```
+
+In the Semaphore project:
+
+| Item | Setting |
+| --- | --- |
+| Key Store | the SSH private key for `ansible_user` on the AI Station. If the repo is private, also a read-only deploy key |
+| Repository | this repo, branch `main` |
+| Inventory | Static, the same content as `inventory.yml` (host, `ansible_user`, `ssh_subnets`, `client_subnets`, `grafana_smtp_skip_verify`), with the SSH key above |
+| Variable Group | Extra variables: `{"vault_file": "/dev/null"}`. Secrets: every key in `vault.example.yml` plus `ansible_become_password` |
+| Template | playbook `deploy/ansible/site.yml`, CLI args `["--tags", "stack"]`, survey variable `only` (`all`, `inference`, `platform`, `observability`; default `all`). Do not allow the branch to be overridden |
+| Team | the PM as Task Runner: runs templates and reads logs, cannot edit templates, keys or secrets |
+
+- **Two copies of the secrets.** `vault.yml` (CLI) and the variable group (Semaphore) are synced by hand. Change a secret in both. The `stack` role stops when a key in `vault.example.yml` is missing from the one in use, so a PR that adds a key fails loudly on whichever copy was not updated. It cannot catch a value that differs between the two.
+- **Secret types.** `vault_alert_email_to` is a list (`["ops@example.com"]`), not a string. The `stack` role rejects a string, which would be joined letter by letter.
+- **Two fetches of `main`.** Semaphore runs the playbook from its own clone, and the host checks out `repo_ref` (default `main`) again. A merge between the two means the playbook and the deployed code differ by a commit. Rerun if a merge landed mid-run.
+- **Deploying from `main` replaces whatever branch the host runs now.** While the POC runs an experiment branch, don't hand the button to the PM.
+- **`vault_file: /dev/null`.** Semaphore has no `vault.yml`. An empty vars file loads nothing, and the secrets arrive as extra vars, which override everything.
 
 ## Host directories
 

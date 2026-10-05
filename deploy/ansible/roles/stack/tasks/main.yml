@@ -4,6 +4,9 @@
     that: only == 'all' or only in stack_projects
     fail_msg: "only must be all or one of {{ stack_projects | join(', ') }}"
 
+- name: Check the vault keys
+  ansible.builtin.include_tasks: vault_guard.yml
+
 - name: Check -e inference_model
   ansible.builtin.assert:
     that: inference_model in ['gemma', 'k2']
@@ -45,7 +48,9 @@
       - vault_grafana_smtp_host is defined and (vault_grafana_smtp_host | length > 0)
       - vault_grafana_smtp_from is defined and (vault_grafana_smtp_from | length > 0)
       - vault_alert_email_to is defined and (vault_alert_email_to | length > 0)
-    fail_msg: "observability deployment requires vault_grafana_smtp_host, vault_grafana_smtp_from, and vault_alert_email_to"
+      # A string would be joined letter by letter into ALERT_EMAIL_TO.
+      - vault_alert_email_to is sequence and vault_alert_email_to is not string
+    fail_msg: "observability deployment requires vault_grafana_smtp_host, vault_grafana_smtp_from, and vault_alert_email_to (a list)"
   when: only in ['all', 'observability']
 
 - name: Check nothing else holds vLLM's port

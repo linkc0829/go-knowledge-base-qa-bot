@@ -137,6 +137,8 @@ jobs:
         run: sudo "$(command -v ansible-playbook)" -i localhost, -c local tests/port_guard.yml
       - name: stack shared-concurrency guard
         run: sudo "$(command -v ansible-playbook)" -i localhost, -c local tests/seqs_guard.yml
+      - name: stack vault key guard
+        run: ansible-playbook -i localhost, -c local tests/vault_guard.yml
 
   govulncheck:
     runs-on: ubuntu-latest

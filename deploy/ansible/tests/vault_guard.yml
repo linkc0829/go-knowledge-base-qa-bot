@@ -1,7 +1,6 @@
 ---
 # CI only: the stack role's check that every vault.example.yml key is set.
-# The second play loads /dev/null as its vault, as Semaphore does, which also
-# proves an empty vars file is accepted.
+# The second play loads an empty vault (/dev/null).
 #   ansible-playbook -i localhost, -c local tests/vault_guard.yml
 - name: Every key set passes
   hosts: all

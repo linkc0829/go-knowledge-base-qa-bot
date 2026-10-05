@@ -5,6 +5,7 @@
 {"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"kb_query","q":"SECRET-Q2","owner_id":"p_AliceFromMarketing2026","took":0.5,"grounded":false,"strategy":"refuse"}
 {"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"llm_usage","model":"gemma-4-26b-a4b","prompt_tokens":777,"completion_tokens":333,"ttft":0.2,"duration":1.5}
 {"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"host_disk","mount":"/srv","used_pct":42.5,"avail_gb":900}
+{"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"host_ready","gateway":"503","kb":"200"}
 {"level":"info","ts":"2026-09-24T10:00:00.000+0800","caller":"x.go:1","msg":"http","path":"/v1/chat","q":"UNKNOWN-MARKER"}
 {"level":"info","msg":"kb_query","q":"MALFORMED-MARKER"
 plain text MALFORMED-TEXT-MARKER

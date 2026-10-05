@@ -22,6 +22,7 @@ MUST = [
     "strategy", "hybrid", "refuse",  # kb_query fields
     "777", "333",  # llm_usage prompt/completion tokens
     "42.5",  # host_disk
+    "503",  # host_ready
 ]
 # Must never reach Loki.
 NEVER = [

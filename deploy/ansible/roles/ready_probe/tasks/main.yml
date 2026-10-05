@@ -1,0 +1,59 @@
+---
+# Every minute, one host_ready line into host.log probing gateway /readyz
+# and kb /ready; Alloy ships it and Grafana alerts on it.
+- name: Install curl
+  ansible.builtin.apt:
+    name: curl
+    state: present
+
+- name: Install the ready probe
+  ansible.builtin.copy:
+    dest: /usr/local/bin/ai-ready-probe
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+      out={{ ai_root }}/platform/data/log/host.log
+      ts=$(date +%Y-%m-%dT%H:%M:%S.%3N%z)
+      gw=$(curl -s -o /dev/null -m 5 -w '%{http_code}' http://127.0.0.1:12599/readyz 2>/dev/null || true)
+      [ -n "$gw" ] || gw="000"
+      kb=$(curl -s -o /dev/null -m 5 -w '%{http_code}' http://127.0.0.1:12598/ready 2>/dev/null || true)
+      [ -n "$kb" ] || kb="000"
+      printf '{"level":"info","ts":"%s","msg":"host_ready","gateway":"%s","kb":"%s"}\n' "$ts" "$gw" "$kb" >> "$out"
+
+- name: Install the ready probe unit and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: ai-ready-probe.service
+      content: |
+        [Unit]
+        Description=Probe gateway and kb readiness for Grafana
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/ai-ready-probe
+    - name: ai-ready-probe.timer
+      content: |
+        [Unit]
+        Description=Readiness probe every minute
+
+        [Timer]
+        OnBootSec=2min
+        OnUnitActiveSec=1min
+        AccuracySec=10s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Start the ready probe timer
+  ansible.builtin.systemd_service:
+    name: ai-ready-probe.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
